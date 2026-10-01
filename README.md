@@ -1,6 +1,6 @@
 # Criatório Sertori
 
-Sistema de cadastro das aves do criatório: calopsitas, ring necks, agapórnis, roséolas, periquitos australianos, red rumps, bourkes e kakarikis, com as cores (mutações) de cada uma, vacinas, nascimentos e backup.
+Sistema de cadastro das aves do criatório: calopsitas, ring necks, agapórnis, roselas, periquitos australianos, red rumps, bourkes e kakarikis, com as cores (mutações) de cada uma, vacinas, nascimentos e backup.
 
 ## Como rodar no computador
 

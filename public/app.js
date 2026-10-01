@@ -16,7 +16,7 @@ const ESPECIES = {
     'Opalino': '#7fc66e', 'Violeta': '#7e65b8', 'Arlequim': '#c7dd62', 'Euwing': '#6fbb5d',
     'Pastel': '#a8d48a', 'Creme Ino': '#f3ecc8'
   },
-  'Roséola': {
+  'Rosela': {
     'Normal (vermelha)': '#d63b2f', 'Lutino': '#f4dc4c', 'Canela': '#c47a4f', 'Pastel': '#e7a08a',
     'Opalina': '#e0644f', 'Rubino': '#e9606a', 'Vermelha Rubino': '#cc2f3f', 'Azul Branca': '#8fb6d8'
   },
