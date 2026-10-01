@@ -15,16 +15,58 @@
     <img src="logo.svg" alt="" class="logo" width="96" height="96">
     <h1>Criatório Sertori</h1>
     <p>Calopsitas · Ring Necks · Agapórnis · Roselas · Periquitos · Red Rumps · Bourkes · Kakarikis</p>
+    <div class="usuario-barra" id="usuario-barra" hidden>
+      <span id="usuario-nome"></span>
+      <button class="btn pequeno" id="btn-conta">Minha senha</button>
+      <button class="btn pequeno perigo" id="btn-sair">Sair</button>
+    </div>
   </header>
 
-  <nav class="abas">
+  <!-- ==================== LOGIN ==================== -->
+  <section id="tela-login" class="tela-login" hidden>
+    <div class="cartao">
+      <form id="form-entrar">
+        <h2>Entrar</h2>
+        <div class="grade-simples">
+          <label>E-mail
+            <input type="email" id="entrar-email" autocomplete="username" required>
+          </label>
+          <label>Senha
+            <input type="password" id="entrar-senha" autocomplete="current-password" required>
+          </label>
+        </div>
+        <div class="acoes"><button type="submit" class="btn primario">Entrar</button></div>
+        <p class="dica">Não tem conta? Peça ao administrador do criatório para cadastrar você.</p>
+      </form>
+
+      <form id="form-primeiro-admin" hidden>
+        <h2>Criar administrador</h2>
+        <p class="dica">Primeiro acesso: crie a conta do administrador. Depois, só ele poderá cadastrar outros usuários.</p>
+        <div class="grade-simples">
+          <label>Nome
+            <input type="text" id="admin-nome" autocomplete="name" required>
+          </label>
+          <label>E-mail
+            <input type="email" id="admin-email" autocomplete="username" required>
+          </label>
+          <label>Senha (mínimo 6 caracteres)
+            <input type="password" id="admin-senha" autocomplete="new-password" minlength="6" required>
+          </label>
+        </div>
+        <div class="acoes"><button type="submit" class="btn primario">Criar e entrar</button></div>
+      </form>
+    </div>
+  </section>
+
+  <nav class="abas" id="menu" hidden>
     <button class="aba ativa" data-aba="aves">Aves</button>
     <button class="aba" data-aba="vacinas">Vacinas</button>
     <button class="aba" data-aba="nascimentos">Nascimentos</button>
     <button class="aba" data-aba="dados">Backup</button>
+    <button class="aba" data-aba="usuarios" id="aba-usuarios" hidden>Usuários</button>
   </nav>
 
-  <main>
+  <main id="app" hidden>
     <!-- ==================== AVES ==================== -->
     <section id="aves" class="painel ativo">
       <div class="resumo" id="resumo"></div>
@@ -183,6 +225,60 @@
           </label>
         </div>
         <p class="aviso">Atenção: importar substitui todos os dados atuais.</p>
+      </div>
+    </section>
+
+    <!-- ==================== USUÁRIOS (administrador) ==================== -->
+    <section id="usuarios" class="painel">
+      <div class="cartao">
+        <h2>Cadastrar usuário</h2>
+        <form id="form-usuario">
+          <div class="grade">
+            <label>Nome *
+              <input type="text" id="usuario-novo-nome" required>
+            </label>
+            <label>E-mail *
+              <input type="email" id="usuario-novo-email" autocomplete="off" required>
+            </label>
+            <label>Senha inicial *
+              <input type="password" id="usuario-novo-senha" autocomplete="new-password" minlength="6" required>
+            </label>
+            <label class="caixa">
+              <input type="checkbox" id="usuario-novo-admin"> Também é administrador
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Cadastrar</button></div>
+        </form>
+      </div>
+
+      <div class="cartao">
+        <h2>Usuários</h2>
+        <div class="tabela-rolagem">
+          <table>
+            <thead>
+              <tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Aves</th><th>Desde</th><th></th></tr>
+            </thead>
+            <tbody id="tabela-usuarios"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MINHA SENHA ==================== -->
+    <section id="conta" class="painel">
+      <div class="cartao">
+        <h2>Trocar minha senha</h2>
+        <form id="form-senha">
+          <div class="grade">
+            <label>Senha atual
+              <input type="password" id="senha-atual" autocomplete="current-password" required>
+            </label>
+            <label>Nova senha (mínimo 6)
+              <input type="password" id="senha-nova" autocomplete="new-password" minlength="6" required>
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Salvar nova senha</button></div>
+        </form>
       </div>
     </section>
   </main>

@@ -93,6 +93,37 @@ body {
   to { background-position: -200% 0; }
 }
 
+/* ==================== USUÁRIO E LOGIN ==================== */
+.usuario-barra {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  color: var(--suave);
+  font-size: .85rem;
+  letter-spacing: .5px;
+}
+.usuario-barra span { color: var(--texto); margin-right: 4px; }
+
+.tela-login {
+  max-width: 440px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+.grade-simples { display: grid; gap: 14px; }
+.dica { font-size: .85rem; color: var(--suave); line-height: 1.5; }
+
+label.caixa {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  align-self: end;
+  padding-bottom: 10px;
+}
+label.caixa input { width: 18px; height: 18px; accent-color: var(--neon); }
+
 /* ==================== ABAS ==================== */
 .abas {
   display: flex;

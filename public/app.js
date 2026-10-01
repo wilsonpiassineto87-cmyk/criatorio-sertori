@@ -66,42 +66,31 @@ function aviso(msg, erro = false) {
   toastTimer = setTimeout(() => (t.hidden = true), 3000);
 }
 
-// Senha de acesso (só usada na versão online, quando o servidor exige)
-function lerSenha() {
-  try { return localStorage.getItem('senha-criatorio') || ''; } catch { return ''; }
-}
-function guardarSenha(senha) {
-  try { localStorage.setItem('senha-criatorio', senha); } catch {}
-}
-
-async function api(url, opcoes = {}, tentativa = 0) {
-  const senhaUsada = lerSenha();
+async function api(url, opcoes = {}) {
   const resp = await fetch(url, {
     ...opcoes,
-    headers: { 'Content-Type': 'application/json', 'x-senha': senhaUsada },
+    headers: { 'Content-Type': 'application/json' },
     body: opcoes.body ? JSON.stringify(opcoes.body) : undefined
   });
-  if (resp.status === 401 && tentativa < 3) {
-    // Se outra requisição já pediu uma senha nova enquanto esta estava em andamento, só tenta de novo
-    if (lerSenha() !== senhaUsada) return api(url, opcoes, tentativa);
-    const senha = prompt(tentativa ? 'Senha incorreta. Digite novamente:' : 'Digite a senha do Criatório Sertori:');
-    if (senha === null) throw new Error('Senha necessária');
-    guardarSenha(senha);
-    return api(url, opcoes, tentativa + 1);
-  }
   const dados = await resp.json().catch(() => ({}));
+  // Sessão expirou ou foi encerrada: volta para a tela de login
+  if (resp.status === 401 && !url.startsWith('/api/auth/')) {
+    mostrarLogin(false);
+    throw new Error('Sua sessão expirou. Entre novamente.');
+  }
   if (!resp.ok) throw new Error(dados.error || 'Erro na requisição');
   return dados;
 }
 
 // ==================== ABAS ====================
+function abrirPainel(nome) {
+  document.querySelectorAll('.aba').forEach(b => b.classList.toggle('ativa', b.dataset.aba === nome));
+  document.querySelectorAll('.painel').forEach(p => p.classList.toggle('ativo', p.id === nome));
+  if (nome === 'usuarios') carregarUsuarios();
+}
+
 document.querySelectorAll('.aba').forEach(botao => {
-  botao.addEventListener('click', () => {
-    document.querySelectorAll('.aba').forEach(b => b.classList.remove('ativa'));
-    document.querySelectorAll('.painel').forEach(p => p.classList.remove('ativo'));
-    botao.classList.add('ativa');
-    $(botao.dataset.aba).classList.add('ativo');
-  });
+  botao.addEventListener('click', () => abrirPainel(botao.dataset.aba));
 });
 
 // ==================== AVES ====================
@@ -349,6 +338,145 @@ $('arquivo-importar').addEventListener('change', async (ev) => {
   } catch (e) { aviso(e.message, true); }
 });
 
+// ==================== USUÁRIOS (administrador) ====================
+let usuarioAtual = null;
+
+async function carregarUsuarios() {
+  try {
+    const lista = await api('/api/usuarios');
+    $('tabela-usuarios').innerHTML = lista.map(u => `
+      <tr>
+        <td>${escapar(u.nome)}${u.id === usuarioAtual.id ? ' <small>(você)</small>' : ''}</td>
+        <td>${escapar(u.email)}</td>
+        <td>${u.admin ? 'Administrador' : 'Usuário'}</td>
+        <td>${u.total_aves}</td>
+        <td>${formatarData(String(u.criado_em).split(' ')[0])}</td>
+        <td class="botoes">
+          ${u.id === usuarioAtual.id ? '' : `
+            <button class="btn pequeno" onclick="redefinirSenha(${u.id})">Redefinir senha</button>
+            <button class="btn pequeno perigo" onclick="excluirUsuario(${u.id})">Excluir</button>`}
+        </td>
+      </tr>`).join('');
+  } catch (e) { aviso(e.message, true); }
+}
+
+window.redefinirSenha = async (id) => {
+  const senha = prompt('Nova senha para este usuário (mínimo 6 caracteres):');
+  if (senha === null) return;
+  try {
+    const r = await api(`/api/usuarios/${id}/senha`, { method: 'PUT', body: { senha } });
+    aviso(r.message);
+  } catch (e) { aviso(e.message, true); }
+};
+
+window.excluirUsuario = async (id) => {
+  if (!confirm('Excluir este usuário e TODAS as aves, vacinas e nascimentos dele? Não dá para desfazer.')) return;
+  try {
+    const r = await api('/api/usuarios/' + id, { method: 'DELETE' });
+    aviso(r.message);
+    carregarUsuarios();
+  } catch (e) { aviso(e.message, true); }
+};
+
+$('form-usuario').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await api('/api/usuarios', {
+      method: 'POST',
+      body: {
+        nome: $('usuario-novo-nome').value.trim(),
+        email: $('usuario-novo-email').value.trim(),
+        senha: $('usuario-novo-senha').value,
+        admin: $('usuario-novo-admin').checked
+      }
+    });
+    aviso(r.message);
+    $('form-usuario').reset();
+    carregarUsuarios();
+  } catch (e) { aviso(e.message, true); }
+});
+
+// ==================== CONTA ====================
+$('btn-conta').addEventListener('click', () => abrirPainel('conta'));
+
+$('form-senha').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await api('/api/auth/trocar-senha', {
+      method: 'POST',
+      body: { senha_atual: $('senha-atual').value, nova_senha: $('senha-nova').value }
+    });
+    aviso(r.message);
+    $('form-senha').reset();
+  } catch (e) { aviso(e.message, true); }
+});
+
+$('btn-sair').addEventListener('click', async () => {
+  await api('/api/auth/sair', { method: 'POST' }).catch(() => {});
+  mostrarLogin(false);
+});
+
+// ==================== LOGIN ====================
+function mostrarLogin(precisaAdmin) {
+  usuarioAtual = null;
+  $('tela-login').hidden = false;
+  $('form-entrar').hidden = precisaAdmin;
+  $('form-primeiro-admin').hidden = !precisaAdmin;
+  $('menu').hidden = true;
+  $('app').hidden = true;
+  $('usuario-barra').hidden = true;
+}
+
+function mostrarSistema(usuario) {
+  usuarioAtual = usuario;
+  $('tela-login').hidden = true;
+  $('menu').hidden = false;
+  $('app').hidden = false;
+  $('usuario-barra').hidden = false;
+  $('usuario-nome').textContent = `Olá, ${usuario.nome}${usuario.admin ? ' (administrador)' : ''}`;
+  $('aba-usuarios').hidden = !usuario.admin;
+  limparFormAve();
+  abrirPainel('aves');
+  atualizarTudo();
+}
+
+async function iniciarSessao() {
+  try {
+    const estado = await api('/api/auth/estado');
+    if (estado.usuario) mostrarSistema(estado.usuario);
+    else mostrarLogin(estado.precisaAdmin);
+  } catch (e) {
+    aviso(e.message, true);
+  }
+}
+
+$('form-entrar').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  try {
+    await api('/api/auth/entrar', {
+      method: 'POST',
+      body: { email: $('entrar-email').value.trim(), senha: $('entrar-senha').value }
+    });
+    $('form-entrar').reset();
+    iniciarSessao();
+  } catch (e) { aviso(e.message, true); }
+});
+
+$('form-primeiro-admin').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  try {
+    await api('/api/auth/primeiro-admin', {
+      method: 'POST',
+      body: { nome: $('admin-nome').value.trim(), email: $('admin-email').value.trim(), senha: $('admin-senha').value }
+    });
+    $('form-primeiro-admin').reset();
+    iniciarSessao();
+  } catch (e) {
+    aviso(e.message, true);
+    iniciarSessao(); // se outra pessoa já criou o administrador, mostra a tela de entrar
+  }
+});
+
 // ==================== INÍCIO ====================
 function atualizarTudo() {
   return Promise.all([carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos()])
@@ -356,4 +484,4 @@ function atualizarTudo() {
 }
 
 preencherEspecies();
-atualizarTudo();
+iniciarSessao();

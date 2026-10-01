@@ -1,26 +1,17 @@
 {
   "name": "criatorio-sertori",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Sistema de cadastro de aves do Criatório Sertori",
-  "main": "server.js",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "banco:local": "wrangler d1 execute criatorio-sertori-db --local --file schema.sql",
+    "start": "wrangler pages dev",
+    "dev": "wrangler pages dev"
   },
-  "keywords": [
-    "criatorio",
-    "aves",
-    "calopsita",
-    "ring neck",
-    "agapornis",
-    "rosela",
-    "cadastro"
-  ],
+  "keywords": ["criatorio", "aves", "calopsita", "ring neck", "agapornis", "rosela", "cadastro"],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "sqlite3": "^5.1.7"
+  "devDependencies": {
+    "wrangler": "^4.145.0"
   }
 }

@@ -1,5 +1,68 @@
--- Tabelas do banco D1 (versão online). Já foram criadas no banco criatorio-sertori-db.
-CREATE TABLE IF NOT EXISTS aves (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, especie TEXT NOT NULL, cor TEXT NOT NULL, sexo TEXT NOT NULL, anilha TEXT, registro TEXT, idade REAL NOT NULL, criado_em DATETIME DEFAULT CURRENT_TIMESTAMP, atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS vacinas (id INTEGER PRIMARY KEY AUTOINCREMENT, ave_id INTEGER, nome_vacina TEXT NOT NULL, data_aplicacao DATE NOT NULL, proxima_dose DATE, observacoes TEXT);
-CREATE TABLE IF NOT EXISTS nascimentos (id INTEGER PRIMARY KEY AUTOINCREMENT, mae_id INTEGER, pai_id INTEGER, data_nascimento DATE NOT NULL, quantidade INTEGER DEFAULT 1, observacoes TEXT);
-CREATE TABLE IF NOT EXISTS backups (id INTEGER PRIMARY KEY AUTOINCREMENT, criado_em DATETIME DEFAULT CURRENT_TIMESTAMP, dados TEXT NOT NULL);
+-- Esquema do banco D1 "criatorio-sertori-db".
+-- Cada ave, vacina, nascimento e backup pertence a um usuário (usuario_id).
+
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  senha_hash TEXT NOT NULL,
+  senha_salt TEXT NOT NULL,
+  admin INTEGER NOT NULL DEFAULT 0,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Guarda só o hash do token de login, nunca o token em si
+CREATE TABLE IF NOT EXISTS sessoes (
+  token_hash TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL,
+  expira_em DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessoes_usuario ON sessoes(usuario_id);
+
+CREATE TABLE IF NOT EXISTS aves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  nome TEXT NOT NULL,
+  especie TEXT NOT NULL,
+  cor TEXT NOT NULL,
+  sexo TEXT NOT NULL,
+  anilha TEXT,
+  registro TEXT,
+  idade REAL NOT NULL,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_aves_usuario ON aves(usuario_id);
+
+CREATE TABLE IF NOT EXISTS vacinas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  ave_id INTEGER,
+  nome_vacina TEXT NOT NULL,
+  data_aplicacao DATE NOT NULL,
+  proxima_dose DATE,
+  observacoes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vacinas_usuario ON vacinas(usuario_id);
+
+CREATE TABLE IF NOT EXISTS nascimentos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  mae_id INTEGER,
+  pai_id INTEGER,
+  data_nascimento DATE NOT NULL,
+  quantidade INTEGER DEFAULT 1,
+  observacoes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_nascimentos_usuario ON nascimentos(usuario_id);
+
+CREATE TABLE IF NOT EXISTS backups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  dia TEXT NOT NULL DEFAULT (date('now')),
+  automatico INTEGER NOT NULL DEFAULT 0,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  dados TEXT NOT NULL
+);
+-- No máximo um backup automático por usuário por dia
+CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_diario ON backups(usuario_id, dia) WHERE automatico = 1;
