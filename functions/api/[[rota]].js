@@ -5,12 +5,16 @@
 const DIAS_SESSAO = 30;
 const HORAS_LINK_REDEFINICAO = 24;
 const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O, 1/I para não confundir
+const FORMAS_PAGAMENTO = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito'];
+const HOJE_BR = "date('now', '-3 hours')"; // data de hoje no horário de Brasília
+const dataValida = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 const ITERACOES_PBKDF2 = 100000; // máximo aceito pelo Cloudflare Workers
 
 const json = (corpo, status = 200, headers = {}) => Response.json(corpo, { status, headers });
 const erro = (mensagem, status) => json({ error: mensagem }, status);
 const vazio = (v) => v === undefined || v === null || v === '';
 const validarAve = (b) => !vazio(b.nome) && !vazio(b.especie) && !vazio(b.cor) && !vazio(b.sexo) && !vazio(b.idade);
+const precoOuNulo = (v) => (vazio(v) || !(Number(v) >= 0) ? null : Math.round(Number(v) * 100) / 100);
 const emailValido = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
 // ==================== SENHAS E SESSÕES ====================
@@ -117,12 +121,14 @@ async function definirSenha(db, uid, senha) {
 // ==================== DADOS DO USUÁRIO ====================
 
 async function exportarTudo(db, uid) {
-  const [aves, vacinas, nascimentos] = await db.batch([
-    db.prepare('SELECT id, nome, especie, cor, sexo, anilha, registro, idade, criado_em, atualizado_em FROM aves WHERE usuario_id = ?').bind(uid),
+  const [aves, vacinas, nascimentos, vendas] = await db.batch([
+    db.prepare('SELECT id, nome, especie, cor, sexo, anilha, registro, idade, status, preco, criado_em, atualizado_em FROM aves WHERE usuario_id = ?').bind(uid),
     db.prepare('SELECT id, ave_id, nome_vacina, data_aplicacao, proxima_dose, observacoes FROM vacinas WHERE usuario_id = ?').bind(uid),
-    db.prepare('SELECT id, mae_id, pai_id, data_nascimento, quantidade, observacoes FROM nascimentos WHERE usuario_id = ?').bind(uid)
+    db.prepare('SELECT id, mae_id, pai_id, data_nascimento, quantidade, observacoes FROM nascimentos WHERE usuario_id = ?').bind(uid),
+    db.prepare(`SELECT id, ave_id, ave_nome, ave_especie, ave_cor, comprador_nome, comprador_telefone, valor, forma_pagamento,
+                       status_pagamento, data_venda, data_pagamento, observacoes FROM vendas WHERE usuario_id = ?`).bind(uid)
   ]);
-  return { aves: aves.results, vacinas: vacinas.results, nascimentos: nascimentos.results };
+  return { aves: aves.results, vacinas: vacinas.results, nascimentos: nascimentos.results, vendas: vendas.results };
 }
 
 // Backup automático diário: uma cópia por usuário na primeira alteração de cada dia
@@ -277,13 +283,15 @@ async function rotear(request, env, params) {
     if (metodo === 'DELETE' && id) {
       if (Number(id) === uid) return erro('Você não pode excluir a própria conta', 400);
       const alvo = Number(id);
-      const [, , , , , , apagado] = await db.batch([
+      const [, , , , , , , , apagado] = await db.batch([
         db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM redefinicoes WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM vacinas WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM nascimentos WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM aves WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM backups WHERE usuario_id = ?').bind(alvo),
+        db.prepare('DELETE FROM vendas WHERE usuario_id = ?').bind(alvo),
+        db.prepare('DELETE FROM config_pix WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM usuarios WHERE id = ?').bind(alvo)
       ]);
       return apagado.meta.changes ? json({ message: 'Usuário e seus dados excluídos!' }) : erro('Usuário não encontrado', 404);
@@ -295,6 +303,12 @@ async function rotear(request, env, params) {
     if (metodo === 'GET' && !id) {
       let sql = 'SELECT * FROM aves WHERE usuario_id = ?';
       const valores = [uid];
+      // Por padrão só as aves do plantel; ?status=vendida ou ?status=todas para as outras
+      const status = url.searchParams.get('status') || 'plantel';
+      if (status !== 'todas') {
+        sql += ' AND status = ?';
+        valores.push(status);
+      }
       for (const campo of ['especie', 'sexo', 'cor']) {
         const valor = url.searchParams.get(campo);
         if (valor) {
@@ -311,15 +325,16 @@ async function rotear(request, env, params) {
     }
     if (metodo === 'POST') {
       if (!validarAve(corpo)) return erro('Preencha todos os campos obrigatórios', 400);
-      const r = await db.prepare('INSERT INTO aves (usuario_id, nome, especie, cor, sexo, anilha, registro, idade) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(uid, corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '', Number(corpo.idade)).run();
+      const r = await db.prepare('INSERT INTO aves (usuario_id, nome, especie, cor, sexo, anilha, registro, idade, preco) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(uid, corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '', Number(corpo.idade), precoOuNulo(corpo.preco)).run();
       return json({ id: r.meta.last_row_id, message: 'Ave cadastrada com sucesso!' });
     }
     if (metodo === 'PUT') {
       if (!validarAve(corpo)) return erro('Preencha todos os campos obrigatórios', 400);
-      const r = await db.prepare(`UPDATE aves SET nome=?, especie=?, cor=?, sexo=?, anilha=?, registro=?, idade=?, atualizado_em=CURRENT_TIMESTAMP
+      const r = await db.prepare(`UPDATE aves SET nome=?, especie=?, cor=?, sexo=?, anilha=?, registro=?, idade=?, preco=?, atualizado_em=CURRENT_TIMESTAMP
                                   WHERE id=? AND usuario_id=?`)
-        .bind(corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '', Number(corpo.idade), id, uid).run();
+        .bind(corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '', Number(corpo.idade),
+              precoOuNulo(corpo.preco), id, uid).run();
       return r.meta.changes ? json({ message: 'Ave atualizada com sucesso!' }) : erro('Ave não encontrada', 404);
     }
     if (metodo === 'DELETE') {
@@ -330,12 +345,12 @@ async function rotear(request, env, params) {
 
   if (recurso === 'estatisticas' && metodo === 'GET') {
     const [especies, cores, totais] = await db.batch([
-      db.prepare('SELECT especie, COUNT(*) as total FROM aves WHERE usuario_id = ? GROUP BY especie ORDER BY total DESC').bind(uid),
-      db.prepare('SELECT especie, cor, COUNT(*) as total FROM aves WHERE usuario_id = ? GROUP BY especie, cor ORDER BY especie, total DESC').bind(uid),
+      db.prepare("SELECT especie, COUNT(*) as total FROM aves WHERE usuario_id = ? AND status = 'plantel' GROUP BY especie ORDER BY total DESC").bind(uid),
+      db.prepare("SELECT especie, cor, COUNT(*) as total FROM aves WHERE usuario_id = ? AND status = 'plantel' GROUP BY especie, cor ORDER BY especie, total DESC").bind(uid),
       db.prepare(`SELECT COUNT(*) as total,
                          SUM(CASE WHEN sexo = 'Macho' THEN 1 ELSE 0 END) as machos,
                          SUM(CASE WHEN sexo = 'Fêmea' THEN 1 ELSE 0 END) as femeas
-                  FROM aves WHERE usuario_id = ?`).bind(uid)
+                  FROM aves WHERE usuario_id = ? AND status = 'plantel'`).bind(uid)
     ]);
     const t = totais.results[0];
     return json({ total: t.total, machos: t.machos || 0, femeas: t.femeas || 0, especies: especies.results, cores: cores.results });
@@ -394,6 +409,143 @@ async function rotear(request, env, params) {
     }
   }
 
+  // ==================== VENDAS ====================
+  if (recurso === 'vendas') {
+    if (metodo === 'GET' && !id) {
+      const { results } = await db.prepare('SELECT * FROM vendas WHERE usuario_id = ? ORDER BY data_venda DESC, id DESC').bind(uid).all();
+      return json(results);
+    }
+
+    if (metodo === 'POST' && !id) {
+      const valor = Number(corpo.valor);
+      if (vazio(corpo.ave_id) || !(valor > 0)) return erro('Escolha a ave e informe o valor da venda', 400);
+      if (!FORMAS_PAGAMENTO.includes(corpo.forma_pagamento)) return erro('Escolha a forma de pagamento', 400);
+      const pago = corpo.status_pagamento === 'pago';
+      const dataVenda = dataValida(corpo.data_venda) ? corpo.data_venda : null;
+      const ave = await db.prepare("SELECT id, nome, especie, cor FROM aves WHERE id = ? AND usuario_id = ? AND status = 'plantel'")
+        .bind(Number(corpo.ave_id), uid).first();
+      if (!ave) return erro('Ave não encontrada no plantel (talvez já tenha sido vendida)', 404);
+
+      // Guarda nome/espécie/cor da ave na venda, para o histórico continuar certo mesmo se a ave for excluída
+      const [venda] = await db.batch([
+        db.prepare(`INSERT INTO vendas (usuario_id, ave_id, ave_nome, ave_especie, ave_cor, comprador_nome, comprador_telefone, valor,
+                                        forma_pagamento, status_pagamento, data_venda, data_pagamento, observacoes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, ${HOJE_BR}), ${pago ? HOJE_BR : 'NULL'}, ?)`)
+          .bind(uid, ave.id, ave.nome, ave.especie, ave.cor, String(corpo.comprador_nome || '').trim(), String(corpo.comprador_telefone || '').trim(),
+                Math.round(valor * 100) / 100, corpo.forma_pagamento, pago ? 'pago' : 'pendente', dataVenda, String(corpo.observacoes || '').trim()),
+        db.prepare("UPDATE aves SET status = 'vendida', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(ave.id, uid)
+      ]);
+      return json({ id: venda.meta.last_row_id, message: `Venda de ${ave.nome} registrada!` });
+    }
+
+    const venda = id ? await db.prepare('SELECT * FROM vendas WHERE id = ? AND usuario_id = ?').bind(Number(id), uid).first() : null;
+    if (id && !venda) return erro('Venda não encontrada', 404);
+
+    // Marcar como pago / pendente
+    if (metodo === 'PUT' && extra === 'pagamento') {
+      if (venda.status_pagamento === 'cancelada') return erro('Esta venda foi cancelada', 400);
+      const pago = corpo.status_pagamento === 'pago';
+      await db.prepare(`UPDATE vendas SET status_pagamento = ?, data_pagamento = ${pago ? HOJE_BR : 'NULL'} WHERE id = ? AND usuario_id = ?`)
+        .bind(pago ? 'pago' : 'pendente', venda.id, uid).run();
+      return json({ message: pago ? 'Pagamento confirmado!' : 'Venda marcada como pendente' });
+    }
+
+    // Cancelar: a ave volta para o plantel e a venda fica no histórico como cancelada
+    if (metodo === 'POST' && extra === 'cancelar') {
+      if (venda.status_pagamento === 'cancelada') return erro('Esta venda já foi cancelada', 400);
+      await db.batch([
+        db.prepare("UPDATE vendas SET status_pagamento = 'cancelada' WHERE id = ? AND usuario_id = ?").bind(venda.id, uid),
+        db.prepare("UPDATE aves SET status = 'plantel', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(venda.ave_id, uid)
+      ]);
+      return json({ message: `Venda cancelada. ${venda.ave_nome} voltou para o plantel.` });
+    }
+
+    // Excluir o registro: se a venda não estava cancelada, a ave volta para o plantel
+    if (metodo === 'DELETE') {
+      const comandos = [db.prepare('DELETE FROM vendas WHERE id = ? AND usuario_id = ?').bind(venda.id, uid)];
+      if (venda.status_pagamento !== 'cancelada') {
+        comandos.push(db.prepare("UPDATE aves SET status = 'plantel', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(venda.ave_id, uid));
+      }
+      await db.batch(comandos);
+      return json({ message: 'Venda excluída!' });
+    }
+  }
+
+  // ==================== CONFIGURAÇÃO DO PIX ====================
+  if (recurso === 'pix') {
+    if (metodo === 'GET') {
+      return json(await db.prepare('SELECT tipo, chave, nome, cidade FROM config_pix WHERE usuario_id = ?').bind(uid).first() || {});
+    }
+    if (metodo === 'PUT') {
+      const chave = String(corpo.chave || '').trim();
+      const nome = String(corpo.nome || '').trim();
+      const cidade = String(corpo.cidade || '').trim();
+      const tipo = String(corpo.tipo || '');
+      if (!['cpf', 'cnpj', 'celular', 'email', 'aleatoria'].includes(tipo)) return erro('Escolha o tipo da chave Pix', 400);
+      if (!chave || !nome || !cidade) return erro('Preencha a chave Pix, o nome do recebedor e a cidade', 400);
+      if (chave.length > 77) return erro('Chave Pix muito longa', 400);
+      await db.prepare(`INSERT INTO config_pix (usuario_id, tipo, chave, nome, cidade) VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(usuario_id) DO UPDATE SET tipo = excluded.tipo, chave = excluded.chave, nome = excluded.nome, cidade = excluded.cidade`)
+        .bind(uid, tipo, chave, nome, cidade).run();
+      return json({ message: 'Dados do Pix salvos!' });
+    }
+  }
+
+  // ==================== PAINEL ====================
+  if (recurso === 'painel' && metodo === 'GET') {
+    const valida = "status_pagamento != 'cancelada'";
+    const [plantel, especies, filhotes, vacinasProximas, vendasResumo, vendasMes, formas, especiesVendidas, ultimasVendas] = await db.batch([
+      db.prepare(`SELECT COUNT(*) as total,
+                         SUM(CASE WHEN sexo = 'Macho' THEN 1 ELSE 0 END) as machos,
+                         SUM(CASE WHEN sexo = 'Fêmea' THEN 1 ELSE 0 END) as femeas,
+                         SUM(CASE WHEN preco IS NOT NULL THEN 1 ELSE 0 END) as com_preco,
+                         COALESCE(SUM(preco), 0) as valor_estoque
+                  FROM aves WHERE usuario_id = ? AND status = 'plantel'`).bind(uid),
+      db.prepare(`SELECT especie, COUNT(*) as total,
+                         SUM(CASE WHEN sexo = 'Macho' THEN 1 ELSE 0 END) as machos,
+                         SUM(CASE WHEN sexo = 'Fêmea' THEN 1 ELSE 0 END) as femeas
+                  FROM aves WHERE usuario_id = ? AND status = 'plantel' GROUP BY especie ORDER BY total DESC`).bind(uid),
+      db.prepare(`SELECT COALESCE(SUM(quantidade), 0) as filhotes, COUNT(*) as ninhadas
+                  FROM nascimentos WHERE usuario_id = ? AND strftime('%Y', data_nascimento) = strftime('%Y', ${HOJE_BR})`).bind(uid),
+      db.prepare(`SELECT v.id, v.nome_vacina, v.proxima_dose, a.nome as ave_nome, a.especie
+                  FROM vacinas v JOIN aves a ON a.id = v.ave_id AND a.usuario_id = v.usuario_id AND a.status = 'plantel'
+                  WHERE v.usuario_id = ? AND v.proxima_dose != '' AND v.proxima_dose <= date(${HOJE_BR}, '+30 days')
+                  ORDER BY v.proxima_dose LIMIT 8`).bind(uid),
+      db.prepare(`SELECT
+                    COUNT(*) as total_vendas,
+                    COALESCE(SUM(CASE WHEN status_pagamento = 'pago' THEN valor END), 0) as recebido,
+                    COALESCE(SUM(CASE WHEN status_pagamento = 'pendente' THEN valor END), 0) as a_receber,
+                    SUM(CASE WHEN status_pagamento = 'pendente' THEN 1 ELSE 0 END) as pendentes,
+                    COALESCE(SUM(CASE WHEN strftime('%Y-%m', data_venda) = strftime('%Y-%m', ${HOJE_BR}) THEN valor END), 0) as faturamento_mes,
+                    SUM(CASE WHEN strftime('%Y-%m', data_venda) = strftime('%Y-%m', ${HOJE_BR}) THEN 1 ELSE 0 END) as vendas_mes,
+                    COALESCE(SUM(CASE WHEN strftime('%Y', data_venda) = strftime('%Y', ${HOJE_BR}) THEN valor END), 0) as faturamento_ano,
+                    COALESCE(AVG(valor), 0) as ticket_medio
+                  FROM vendas WHERE usuario_id = ? AND ${valida}`).bind(uid),
+      db.prepare(`SELECT strftime('%Y-%m', data_venda) as mes, COUNT(*) as vendas, SUM(valor) as valor
+                  FROM vendas WHERE usuario_id = ? AND ${valida} AND data_venda >= date(${HOJE_BR}, 'start of month', '-11 months')
+                  GROUP BY mes ORDER BY mes`).bind(uid),
+      db.prepare(`SELECT forma_pagamento, COUNT(*) as vendas, SUM(valor) as valor
+                  FROM vendas WHERE usuario_id = ? AND ${valida} GROUP BY forma_pagamento ORDER BY valor DESC`).bind(uid),
+      db.prepare(`SELECT ave_especie as especie, COUNT(*) as vendas, SUM(valor) as valor
+                  FROM vendas WHERE usuario_id = ? AND ${valida} GROUP BY ave_especie ORDER BY valor DESC`).bind(uid),
+      db.prepare(`SELECT id, ave_nome, ave_especie, ave_cor, comprador_nome, valor, forma_pagamento, status_pagamento, data_venda
+                  FROM vendas WHERE usuario_id = ? ORDER BY data_venda DESC, id DESC LIMIT 5`).bind(uid)
+    ]);
+    const hoje = await db.prepare(`SELECT ${HOJE_BR} as hoje`).first();
+    return json({
+      hoje: hoje.hoje,
+      plantel: plantel.results[0],
+      especies: especies.results,
+      nascimentos: filhotes.results[0],
+      vacinas: vacinasProximas.results,
+      vendas: vendasResumo.results[0],
+      vendas_por_mes: vendasMes.results,
+      formas_pagamento: formas.results,
+      especies_vendidas: especiesVendidas.results,
+      ultimas_vendas: ultimasVendas.results
+    });
+  }
+
   // ==================== BACKUP ====================
   if (recurso === 'backup' && metodo === 'GET') {
     const dados = await exportarTudo(db, uid);
@@ -406,7 +558,7 @@ async function rotear(request, env, params) {
   }
 
   if (recurso === 'importar' && metodo === 'POST') {
-    const { aves, vacinas, nascimentos } = corpo;
+    const { aves, vacinas, nascimentos, vendas } = corpo;
     if (!Array.isArray(aves)) return erro('Dados inválidos', 400);
 
     // As aves recebem ids novos (os ids são do banco inteiro, compartilhado entre usuários);
@@ -418,13 +570,22 @@ async function rotear(request, env, params) {
     const comandos = [
       db.prepare('DELETE FROM vacinas WHERE usuario_id = ?').bind(uid),
       db.prepare('DELETE FROM nascimentos WHERE usuario_id = ?').bind(uid),
+      db.prepare('DELETE FROM vendas WHERE usuario_id = ?').bind(uid),
       db.prepare('DELETE FROM aves WHERE usuario_id = ?').bind(uid),
-      ...aves.map((a, i) => db.prepare('INSERT INTO aves (id, usuario_id, nome, especie, cor, sexo, anilha, registro, idade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(proximo + i, uid, a.nome, a.especie, a.cor || '', a.sexo, a.anilha || '', a.registro || '', Number(a.idade) || 0)),
+      ...aves.map((a, i) => db.prepare('INSERT INTO aves (id, usuario_id, nome, especie, cor, sexo, anilha, registro, idade, status, preco) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(proximo + i, uid, a.nome, a.especie, a.cor || '', a.sexo, a.anilha || '', a.registro || '', Number(a.idade) || 0,
+              a.status === 'vendida' ? 'vendida' : 'plantel', precoOuNulo(a.preco))),
       ...(Array.isArray(vacinas) ? vacinas : []).map(v => db.prepare('INSERT INTO vacinas (usuario_id, ave_id, nome_vacina, data_aplicacao, proxima_dose, observacoes) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(uid, mapear(v.ave_id), v.nome_vacina, v.data_aplicacao, v.proxima_dose || '', v.observacoes || '')),
       ...(Array.isArray(nascimentos) ? nascimentos : []).map(n => db.prepare('INSERT INTO nascimentos (usuario_id, mae_id, pai_id, data_nascimento, quantidade, observacoes) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(uid, mapear(n.mae_id), mapear(n.pai_id), n.data_nascimento, n.quantidade || 1, n.observacoes || ''))
+        .bind(uid, mapear(n.mae_id), mapear(n.pai_id), n.data_nascimento, n.quantidade || 1, n.observacoes || '')),
+      ...(Array.isArray(vendas) ? vendas : []).map(v => db.prepare(`INSERT INTO vendas (usuario_id, ave_id, ave_nome, ave_especie, ave_cor, comprador_nome,
+                                       comprador_telefone, valor, forma_pagamento, status_pagamento, data_venda, data_pagamento, observacoes)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(uid, mapear(v.ave_id), v.ave_nome || '', v.ave_especie || '', v.ave_cor || '', v.comprador_nome || '', v.comprador_telefone || '',
+              Number(v.valor) || 0, FORMAS_PAGAMENTO.includes(v.forma_pagamento) ? v.forma_pagamento : 'Dinheiro',
+              ['pago', 'pendente', 'cancelada'].includes(v.status_pagamento) ? v.status_pagamento : 'pendente',
+              v.data_venda, v.data_pagamento || null, v.observacoes || ''))
     ];
     await db.batch(comandos); // batch roda tudo numa transação: se algo falhar, nada é apagado
     return json({ message: 'Dados importados com sucesso!' });

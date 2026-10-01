@@ -23,7 +23,11 @@ Trocar a senha **nunca apaga** aves, vacinas, nascimentos ou backups.
 
 ## Funções
 
-- **Aves**: cadastro com nome, espécie, cor/mutação, sexo, anilha, registro e idade. Filtro por espécie e sexo e resumo do plantel.
+- **Painel**: resumo do criatório: aves no plantel, filhotes do ano, vendido no mês e no ano, valor a receber, plantel à venda, aves por espécie, vacinas atrasadas e dos próximos 30 dias, faturamento dos últimos 12 meses, vendas por forma de pagamento e por espécie, e as últimas vendas.
+- **Vendas**: registro da venda (ave, comprador, telefone, valor, forma de pagamento, situação). A ave sai do plantel; se a venda for cancelada, ela volta. Situações: aguardando pagamento, pago ou cancelada.
+- **Pix**: em **Vendas → Meu Pix**, cadastre sua chave. Cada venda por Pix gera o QR Code e o "Pix copia e cola" com o valor, que dá para enviar pelo WhatsApp. O dinheiro cai direto na sua conta, sem taxa. A confirmação é manual: confira no app do banco e clique em **Recebi**. Dinheiro e cartão (maquininha) são só registrados.
+
+- **Aves**: cadastro com nome, espécie, cor/mutação, sexo, anilha, registro, idade e preço de venda (opcional). Filtro por espécie e sexo e resumo do plantel.
 - **Vacinas**: registro de vacinas e medicamentos por ave, com data da próxima dose.
 - **Nascimentos**: registro de filhotes por casal (mãe e pai).
 - **Backup**: backup automático diário no banco, backup manual, exportação e importação em JSON.
@@ -34,7 +38,7 @@ As cores sugeridas para cada espécie ficam no início de `public/app.js` (objet
 
 O site roda no **Cloudflare Pages** com o banco **D1** `criatorio-sertori-db`.
 
-- `public/`: as telas (HTML, CSS, JS e logotipo).
+- `public/`: as telas (HTML, CSS, JS e logotipo). `public/pix.js` gera o código Pix (padrão BR Code do Banco Central) e `public/vendor/qrcode.js` desenha o QR Code.
 - `functions/api/[[rota]].js`: a API (login, usuários, aves, vacinas, nascimentos e backup).
 - `schema.sql`: as tabelas do banco.
 - `wrangler.toml`: liga o banco D1 ao site (binding `DB`).

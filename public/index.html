@@ -97,9 +97,11 @@
   </section>
 
   <nav class="abas" id="menu" hidden>
-    <button class="aba ativa" data-aba="aves">Aves</button>
+    <button class="aba ativa" data-aba="painel">Painel</button>
+    <button class="aba" data-aba="aves">Aves</button>
     <button class="aba" data-aba="vacinas">Vacinas</button>
     <button class="aba" data-aba="nascimentos">Nascimentos</button>
+    <button class="aba" data-aba="vendas">Vendas</button>
     <button class="aba" data-aba="dados">Backup</button>
     <button class="aba" data-aba="usuarios" id="aba-usuarios" hidden>Usuários</button>
   </nav>
@@ -111,8 +113,46 @@
       <button class="btn pequeno" id="btn-ir-codigo">Gerar meu código</button>
     </div>
 
+    <!-- ==================== PAINEL ==================== -->
+    <section id="painel" class="painel ativo">
+      <div class="kpis" id="painel-kpis"></div>
+
+      <div class="grade-painel">
+        <div class="cartao">
+          <h2>Plantel por espécie</h2>
+          <div id="painel-especies"></div>
+        </div>
+        <div class="cartao">
+          <h2>Vacinas: atrasadas e próximos 30 dias</h2>
+          <div id="painel-vacinas"></div>
+        </div>
+        <div class="cartao largo">
+          <h2>Faturamento por mês</h2>
+          <p class="dica">Últimos 12 meses, sem vendas canceladas.</p>
+          <div id="painel-meses"></div>
+        </div>
+        <div class="cartao">
+          <h2>Vendas por forma de pagamento</h2>
+          <div id="painel-formas"></div>
+        </div>
+        <div class="cartao">
+          <h2>Vendas por espécie</h2>
+          <div id="painel-especies-vendidas"></div>
+        </div>
+        <div class="cartao largo">
+          <h2>Últimas vendas</h2>
+          <div class="tabela-rolagem">
+            <table>
+              <thead><tr><th>Data</th><th>Ave</th><th>Comprador</th><th>Valor</th><th>Pagamento</th><th>Situação</th></tr></thead>
+              <tbody id="painel-ultimas"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== AVES ==================== -->
-    <section id="aves" class="painel ativo">
+    <section id="aves" class="painel">
       <div class="resumo" id="resumo"></div>
 
       <div class="cartao">
@@ -147,6 +187,9 @@
             <label>Idade (anos) *
               <input type="number" id="ave-idade" min="0" step="0.1" required>
             </label>
+            <label>Preço de venda (R$)
+              <input type="number" id="ave-preco" min="0" step="0.01" placeholder="Opcional">
+            </label>
           </div>
           <div class="acoes">
             <button type="submit" class="btn primario">Salvar</button>
@@ -169,7 +212,7 @@
         <div class="tabela-rolagem">
           <table>
             <thead>
-              <tr><th>Nome</th><th>Espécie</th><th>Cor</th><th>Sexo</th><th>Anilha</th><th>Registro</th><th>Idade</th><th></th></tr>
+              <tr><th>Nome</th><th>Espécie</th><th>Cor</th><th>Sexo</th><th>Anilha</th><th>Registro</th><th>Idade</th><th>Preço</th><th></th></tr>
             </thead>
             <tbody id="tabela-aves"></tbody>
           </table>
@@ -252,6 +295,100 @@
             <tbody id="tabela-nascimentos"></tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <!-- ==================== VENDAS ==================== -->
+    <section id="vendas" class="painel">
+      <div class="cartao">
+        <h2>Registrar venda</h2>
+        <form id="form-venda">
+          <div class="grade">
+            <label>Ave *
+              <select id="venda-ave" required></select>
+            </label>
+            <label>Valor (R$) *
+              <input type="number" id="venda-valor" min="0.01" step="0.01" required>
+            </label>
+            <label>Forma de pagamento *
+              <select id="venda-forma" required>
+                <option>Pix</option>
+                <option>Dinheiro</option>
+                <option>Cartão de crédito</option>
+                <option>Cartão de débito</option>
+              </select>
+            </label>
+            <label>Situação *
+              <select id="venda-status">
+                <option value="pendente">Aguardando pagamento</option>
+                <option value="pago">Já pago</option>
+              </select>
+            </label>
+            <label>Comprador
+              <input type="text" id="venda-comprador" autocomplete="off">
+            </label>
+            <label>Telefone / WhatsApp
+              <input type="tel" id="venda-telefone" autocomplete="off">
+            </label>
+            <label>Data da venda
+              <input type="date" id="venda-data">
+            </label>
+            <label class="largo">Observações
+              <input type="text" id="venda-obs">
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Registrar venda</button></div>
+          <p class="dica">A ave sai do plantel e vai para o histórico de vendas. Se cancelar a venda, ela volta.</p>
+        </form>
+      </div>
+
+      <div class="cartao">
+        <div class="filtros">
+          <h2>Histórico de vendas</h2>
+          <select id="filtro-vendas">
+            <option value="">Todas</option>
+            <option value="pendente">Aguardando pagamento</option>
+            <option value="pago">Pagas</option>
+            <option value="cancelada">Canceladas</option>
+          </select>
+        </div>
+        <div class="tabela-rolagem">
+          <table>
+            <thead>
+              <tr><th>Data</th><th>Ave</th><th>Comprador</th><th>Valor</th><th>Pagamento</th><th>Situação</th><th></th></tr>
+            </thead>
+            <tbody id="tabela-vendas"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="cartao">
+        <h2>Meu Pix</h2>
+        <p class="dica">Usado para gerar o QR Code das vendas. O dinheiro cai direto na sua conta, sem taxa. Confirme o pagamento no app do seu banco antes de marcar a venda como paga.</p>
+        <form id="form-pix">
+          <div class="grade">
+            <label>Tipo da chave *
+              <select id="pix-tipo" required>
+                <option value="">Selecione</option>
+                <option value="cpf">CPF</option>
+                <option value="cnpj">CNPJ</option>
+                <option value="celular">Celular</option>
+                <option value="email">E-mail</option>
+                <option value="aleatoria">Chave aleatória</option>
+              </select>
+            </label>
+            <label>Chave Pix *
+              <input type="text" id="pix-chave" autocomplete="off" required>
+            </label>
+            <label>Nome do recebedor *
+              <input type="text" id="pix-nome" maxlength="60" required>
+            </label>
+            <label>Cidade *
+              <input type="text" id="pix-cidade" maxlength="40" required>
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Salvar Pix</button></div>
+        </form>
       </div>
     </section>
 
@@ -356,6 +493,27 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- Janela do Pix: QR Code + copia e cola -->
+  <div class="sobreposicao" id="caixa-pix" hidden>
+    <div class="cartao caixa-segredo" role="dialog" aria-modal="true" aria-labelledby="pix-titulo">
+      <h2 id="pix-titulo">Pagamento via Pix</h2>
+      <p class="dica" id="pix-descricao"></p>
+      <div class="pix-valor" id="pix-valor"></div>
+      <div class="pix-qr" id="pix-qr"></div>
+      <label>Pix copia e cola
+        <textarea id="pix-codigo" rows="3" readonly></textarea>
+      </label>
+      <div class="acoes">
+        <button class="btn" id="btn-copiar-pix">Copiar código</button>
+        <button class="btn" id="btn-whats-pix">Enviar no WhatsApp</button>
+        <button class="btn primario" id="btn-pix-pago">Já recebi</button>
+        <button class="link" id="btn-fechar-pix">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/qrcode.js"></script>
+  <script src="pix.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

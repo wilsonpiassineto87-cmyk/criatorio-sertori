@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS aves (
   anilha TEXT,
   registro TEXT,
   idade REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'plantel', -- 'plantel' ou 'vendida'
+  preco REAL,                             -- preço de venda pedido (opcional)
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
   atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -76,3 +78,32 @@ CREATE TABLE IF NOT EXISTS backups (
 );
 -- No máximo um backup automático por usuário por dia
 CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_diario ON backups(usuario_id, dia) WHERE automatico = 1;
+
+-- Vendas: guarda nome/espécie/cor da ave para o histórico não depender do cadastro da ave
+CREATE TABLE IF NOT EXISTS vendas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  ave_id INTEGER,
+  ave_nome TEXT NOT NULL,
+  ave_especie TEXT NOT NULL,
+  ave_cor TEXT,
+  comprador_nome TEXT,
+  comprador_telefone TEXT,
+  valor REAL NOT NULL,
+  forma_pagamento TEXT NOT NULL,                   -- Pix, Dinheiro, Cartão de crédito, Cartão de débito
+  status_pagamento TEXT NOT NULL DEFAULT 'pendente', -- pendente, pago ou cancelada
+  data_venda DATE NOT NULL,
+  data_pagamento DATE,
+  observacoes TEXT,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_vendas_usuario ON vendas(usuario_id, data_venda);
+
+-- Dados do Pix de cada usuário, para gerar o QR Code das vendas
+CREATE TABLE IF NOT EXISTS config_pix (
+  usuario_id INTEGER PRIMARY KEY,
+  tipo TEXT NOT NULL,   -- cpf, cnpj, celular, email ou aleatoria
+  chave TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  cidade TEXT NOT NULL
+);

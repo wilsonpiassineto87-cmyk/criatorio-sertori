@@ -56,6 +56,9 @@ function formatarData(data) {
   return d && m && a ? `${d}/${m}/${a}` : data;
 }
 
+const formatoReal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const dinheiro = (v) => formatoReal.format(Number(v) || 0);
+
 let toastTimer;
 function aviso(msg, erro = false) {
   const t = $('toast');
@@ -87,6 +90,7 @@ function abrirPainel(nome) {
   document.querySelectorAll('.aba').forEach(b => b.classList.toggle('ativa', b.dataset.aba === nome));
   document.querySelectorAll('.painel').forEach(p => p.classList.toggle('ativo', p.id === nome));
   if (nome === 'usuarios') carregarUsuarios();
+  if (nome === 'painel' && usuarioAtual) carregarPainel().catch(e => aviso(e.message, true));
 }
 
 document.querySelectorAll('.aba').forEach(botao => {
@@ -131,11 +135,13 @@ async function carregarAves() {
       <td>${escapar(a.anilha) || '-'}</td>
       <td>${escapar(a.registro) || '-'}</td>
       <td>${a.idade} ${a.idade == 1 ? 'ano' : 'anos'}</td>
+      <td>${a.preco != null ? dinheiro(a.preco) : '-'}</td>
       <td class="botoes">
+        <button class="btn pequeno" onclick="venderAve(${a.id})">Vender</button>
         <button class="btn pequeno" onclick="editarAve(${a.id})">Editar</button>
         <button class="btn pequeno perigo" onclick="excluirAve(${a.id})">Excluir</button>
       </td>
-    </tr>`).join('') : '<tr><td colspan="8" class="vazio">Nenhuma ave cadastrada</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="9" class="vazio">Nenhuma ave no plantel</td></tr>';
 }
 
 async function carregarTodasAves() {
@@ -147,6 +153,10 @@ async function carregarTodasAves() {
     aves.filter(a => a.sexo === 'Fêmea').map(a => `<option value="${a.id}">${rotulo(a)}</option>`).join('');
   $('nasc-pai').innerHTML = '<option value="">—</option>' +
     aves.filter(a => a.sexo === 'Macho').map(a => `<option value="${a.id}">${rotulo(a)}</option>`).join('');
+  const escolhida = $('venda-ave').value;
+  $('venda-ave').innerHTML = '<option value="">Selecione</option>' +
+    aves.map(a => `<option value="${a.id}">${rotulo(a)}${a.preco != null ? ' · ' + dinheiro(a.preco) : ''}</option>`).join('');
+  if (aves.some(a => String(a.id) === escolhida)) $('venda-ave').value = escolhida;
 }
 
 async function carregarResumo() {
@@ -181,6 +191,7 @@ window.editarAve = async (id) => {
   $('ave-anilha').value = a.anilha;
   $('ave-registro').value = a.registro;
   $('ave-idade').value = a.idade;
+  $('ave-preco').value = a.preco ?? '';
   $('titulo-form-ave').textContent = 'Editar ave';
   $('cancelar-edicao').hidden = false;
   $('form-ave').scrollIntoView({ behavior: 'smooth' });
@@ -207,7 +218,8 @@ $('form-ave').addEventListener('submit', async (ev) => {
     sexo: $('ave-sexo').value,
     anilha: $('ave-anilha').value.trim(),
     registro: $('ave-registro').value.trim(),
-    idade: $('ave-idade').value
+    idade: $('ave-idade').value,
+    preco: $('ave-preco').value
   };
   try {
     const r = await api(id ? '/api/aves/' + id : '/api/aves', { method: id ? 'PUT' : 'POST', body });
@@ -337,6 +349,288 @@ $('arquivo-importar').addEventListener('change', async (ev) => {
     atualizarTudo();
   } catch (e) { aviso(e.message, true); }
 });
+
+// ==================== PAINEL ====================
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+function situacaoVenda(status) {
+  const mapa = {
+    pago: ['ok', '✓', 'Pago'],
+    pendente: ['espera', '◷', 'Aguardando'],
+    cancelada: ['cancelada', '✕', 'Cancelada']
+  };
+  const [classe, icone, texto] = mapa[status] || mapa.pendente;
+  return `<span class="situacao ${classe}"><span aria-hidden="true">${icone}</span> ${texto}</span>`;
+}
+
+// Barras horizontais de uma série só (mesma cor): rótulo, barra proporcional e valor
+function barras(itens, vazio) {
+  if (!itens.length) return `<p class="vazio">${vazio}</p>`;
+  const max = Math.max(...itens.map(i => i.valor), 1);
+  return `<ul class="barras">${itens.map(i => `
+    <li title="${escapar(i.rotulo)}: ${escapar(i.texto)}${i.detalhe ? ' (' + escapar(i.detalhe) + ')' : ''}">
+      <span class="barra-rotulo">${escapar(i.rotulo)}</span>
+      <span class="barra-trilho"><span class="barra" style="width:${Math.max(2, (i.valor / max) * 100)}%"></span></span>
+      <span class="barra-valor">${escapar(i.texto)}${i.detalhe ? `<small>${escapar(i.detalhe)}</small>` : ''}</span>
+    </li>`).join('')}</ul>`;
+}
+
+// Colunas por mês (12 meses, incluindo os sem venda)
+function colunasMeses(dados, hoje) {
+  const [ano, mes] = hoje.split('-').map(Number);
+  const porMes = new Map(dados.map(d => [d.mes, d]));
+  const meses = Array.from({ length: 12 }, (_, i) => {
+    const data = new Date(ano, mes - 12 + i, 1);
+    const chave = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+    const d = porMes.get(chave);
+    return { chave, rotulo: MESES[data.getMonth()], ano: data.getFullYear(), valor: d ? d.valor : 0, vendas: d ? d.vendas : 0 };
+  });
+  if (!meses.some(m => m.valor)) return '<p class="vazio">Nenhuma venda nos últimos 12 meses</p>';
+  const max = Math.max(...meses.map(m => m.valor));
+  const maior = meses.findIndex(m => m.valor === max);
+  return `<div class="colunas" role="img" aria-label="Faturamento por mês">${meses.map((m, i) => `
+    <div class="coluna${i === 11 ? ' atual' : ''}" tabindex="0"
+         data-dica="${m.rotulo}/${m.ano}: ${dinheiro(m.valor)} · ${m.vendas} ${m.vendas === 1 ? 'venda' : 'vendas'}">
+      <span class="coluna-valor">${(i === maior || i === 11) && m.valor ? dinheiro(m.valor).replace(',00', '') : ''}</span>
+      <span class="coluna-barra" style="height:${m.valor ? Math.max(3, (m.valor / max) * 100) : 0}%"></span>
+      <span class="coluna-mes">${m.rotulo}</span>
+    </div>`).join('')}</div>`;
+}
+
+async function carregarPainel() {
+  const d = await api('/api/painel');
+  const p = d.plantel, v = d.vendas, n = d.nascimentos;
+  const kpis = [
+    { numero: p.total, rotulo: 'Aves no plantel', detalhe: `${p.machos || 0} machos · ${p.femeas || 0} fêmeas` },
+    { numero: n.filhotes, rotulo: `Filhotes em ${d.hoje.slice(0, 4)}`, detalhe: `${n.ninhadas} ${n.ninhadas === 1 ? 'ninhada' : 'ninhadas'}` },
+    { numero: dinheiro(v.faturamento_mes), rotulo: 'Vendido este mês', detalhe: `${v.vendas_mes || 0} ${v.vendas_mes === 1 ? 'venda' : 'vendas'}` },
+    { numero: dinheiro(v.a_receber), rotulo: 'A receber', detalhe: `${v.pendentes || 0} ${v.pendentes === 1 ? 'venda pendente' : 'vendas pendentes'}`, alerta: v.pendentes > 0 },
+    { numero: dinheiro(v.faturamento_ano), rotulo: `Vendido em ${d.hoje.slice(0, 4)}`, detalhe: `ticket médio ${dinheiro(v.ticket_medio)}` },
+    { numero: dinheiro(p.valor_estoque), rotulo: 'Plantel à venda', detalhe: `${p.com_preco || 0} ${p.com_preco === 1 ? 'ave com preço' : 'aves com preço'}` }
+  ];
+  $('painel-kpis').innerHTML = kpis.map(k => `
+    <div class="item${k.alerta ? ' alerta' : ''}">
+      <div class="numero">${k.numero}</div>
+      <div class="rotulo">${escapar(k.rotulo)}</div>
+      <div class="detalhe">${escapar(k.detalhe)}</div>
+    </div>`).join('');
+
+  $('painel-especies').innerHTML = barras(
+    d.especies.map(e => ({ rotulo: e.especie, valor: e.total, texto: String(e.total), detalhe: `${e.machos}♂ ${e.femeas}♀` })),
+    'Nenhuma ave no plantel');
+
+  $('painel-vacinas').innerHTML = d.vacinas.length ? `<ul class="lista-vacinas">${d.vacinas.map(x => {
+    const atrasada = x.proxima_dose < d.hoje;
+    return `<li class="${atrasada ? 'atrasada' : ''}">
+      <span>${atrasada ? '<span class="situacao cancelada">! Atrasada</span>' : '<span class="situacao espera">◷ Em breve</span>'}</span>
+      <span><strong>${escapar(x.ave_nome)}</strong> <small>${escapar(x.especie)}</small><br>${escapar(x.nome_vacina)}</span>
+      <span class="data">${formatarData(x.proxima_dose)}</span>
+    </li>`;
+  }).join('')}</ul>` : '<p class="vazio">Nenhuma dose atrasada ou nos próximos 30 dias</p>';
+
+  $('painel-meses').innerHTML = colunasMeses(d.vendas_por_mes, d.hoje);
+  $('painel-formas').innerHTML = barras(
+    d.formas_pagamento.map(f => ({ rotulo: f.forma_pagamento, valor: f.valor, texto: dinheiro(f.valor), detalhe: `${f.vendas} ${f.vendas === 1 ? 'venda' : 'vendas'}` })),
+    'Nenhuma venda ainda');
+  $('painel-especies-vendidas').innerHTML = barras(
+    d.especies_vendidas.map(e => ({ rotulo: e.especie, valor: e.valor, texto: dinheiro(e.valor), detalhe: `${e.vendas} ${e.vendas === 1 ? 'ave' : 'aves'}` })),
+    'Nenhuma venda ainda');
+  $('painel-ultimas').innerHTML = d.ultimas_vendas.length ? d.ultimas_vendas.map(x => `
+    <tr>
+      <td>${formatarData(x.data_venda)}</td>
+      <td>${escapar(x.ave_nome)} <small>${escapar(x.ave_especie)} ${escapar(x.ave_cor)}</small></td>
+      <td>${escapar(x.comprador_nome) || '-'}</td>
+      <td>${dinheiro(x.valor)}</td>
+      <td>${escapar(x.forma_pagamento)}</td>
+      <td>${situacaoVenda(x.status_pagamento)}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="vazio">Nenhuma venda ainda</td></tr>';
+}
+
+// ==================== VENDAS ====================
+let vendas = [];
+let configPix = {};
+
+function hojeLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function carregarVendas() {
+  vendas = await api('/api/vendas');
+  const filtro = $('filtro-vendas').value;
+  const lista = filtro ? vendas.filter(v => v.status_pagamento === filtro) : vendas;
+  $('tabela-vendas').innerHTML = lista.length ? lista.map(v => {
+    const botoes = [];
+    if (v.status_pagamento === 'pendente') {
+      if (v.forma_pagamento === 'Pix') botoes.push(`<button class="btn pequeno" onclick="abrirPix(${v.id})">QR Pix</button>`);
+      botoes.push(`<button class="btn pequeno" onclick="marcarPagamento(${v.id}, 'pago')">Recebi</button>`);
+    }
+    if (v.status_pagamento === 'pago') botoes.push(`<button class="btn pequeno" onclick="marcarPagamento(${v.id}, 'pendente')">Desfazer pago</button>`);
+    if (v.status_pagamento !== 'cancelada') botoes.push(`<button class="btn pequeno perigo" onclick="cancelarVenda(${v.id})">Cancelar</button>`);
+    botoes.push(`<button class="btn pequeno perigo" onclick="excluirVenda(${v.id})">Excluir</button>`);
+    return `
+    <tr>
+      <td>${formatarData(v.data_venda)}</td>
+      <td>${escapar(v.ave_nome)} <small>${escapar(v.ave_especie)} ${escapar(v.ave_cor)}</small></td>
+      <td>${escapar(v.comprador_nome) || '-'}${v.comprador_telefone ? `<br><small>${escapar(v.comprador_telefone)}</small>` : ''}</td>
+      <td>${dinheiro(v.valor)}</td>
+      <td>${escapar(v.forma_pagamento)}</td>
+      <td>${situacaoVenda(v.status_pagamento)}${v.data_pagamento ? `<br><small>em ${formatarData(v.data_pagamento)}</small>` : ''}</td>
+      <td class="botoes">${botoes.join('')}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" class="vazio">${filtro ? 'Nenhuma venda com essa situação' : 'Nenhuma venda registrada'}</td></tr>`;
+}
+
+async function depoisDeVenda() {
+  await Promise.all([carregarVendas(), carregarAves(), carregarTodasAves(), carregarResumo(), carregarPainel()]);
+}
+
+window.venderAve = (id) => {
+  abrirPainel('vendas');
+  $('venda-ave').value = String(id);
+  $('venda-ave').dispatchEvent(new Event('change'));
+  $('form-venda').scrollIntoView({ behavior: 'smooth' });
+  $('venda-valor').focus();
+};
+
+$('venda-ave').addEventListener('change', () => {
+  const ave = aves.find(a => String(a.id) === $('venda-ave').value);
+  if (ave && ave.preco != null) $('venda-valor').value = ave.preco;
+});
+
+$('filtro-vendas').addEventListener('change', carregarVendas);
+
+$('form-venda').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const forma = $('venda-forma').value;
+  const status = $('venda-status').value;
+  try {
+    const r = await api('/api/vendas', {
+      method: 'POST',
+      body: {
+        ave_id: $('venda-ave').value,
+        valor: $('venda-valor').value,
+        forma_pagamento: forma,
+        status_pagamento: status,
+        comprador_nome: $('venda-comprador').value.trim(),
+        comprador_telefone: $('venda-telefone').value.trim(),
+        data_venda: $('venda-data').value || hojeLocal(),
+        observacoes: $('venda-obs').value.trim()
+      }
+    });
+    aviso(r.message);
+    $('form-venda').reset();
+    $('venda-data').value = hojeLocal();
+    await depoisDeVenda();
+    if (forma === 'Pix' && status === 'pendente') abrirPix(r.id);
+  } catch (e) { aviso(e.message, true); }
+});
+
+window.marcarPagamento = async (id, status) => {
+  try {
+    const r = await api(`/api/vendas/${id}/pagamento`, { method: 'PUT', body: { status_pagamento: status } });
+    aviso(r.message);
+    await depoisDeVenda();
+  } catch (e) { aviso(e.message, true); }
+};
+
+window.cancelarVenda = async (id) => {
+  if (!confirm('Cancelar esta venda? A ave volta para o plantel.')) return;
+  try {
+    const r = await api(`/api/vendas/${id}/cancelar`, { method: 'POST' });
+    aviso(r.message);
+    await depoisDeVenda();
+  } catch (e) { aviso(e.message, true); }
+};
+
+window.excluirVenda = async (id) => {
+  const v = vendas.find(x => x.id === id);
+  const extra = v && v.status_pagamento !== 'cancelada' ? ' A ave volta para o plantel.' : '';
+  if (!confirm('Excluir este registro de venda?' + extra)) return;
+  try {
+    const r = await api('/api/vendas/' + id, { method: 'DELETE' });
+    aviso(r.message);
+    await depoisDeVenda();
+  } catch (e) { aviso(e.message, true); }
+};
+
+// ==================== PIX ====================
+async function carregarPix() {
+  configPix = await api('/api/pix');
+  $('pix-tipo').value = configPix.tipo || '';
+  $('pix-chave').value = configPix.chave || '';
+  $('pix-nome').value = configPix.nome || '';
+  $('pix-cidade').value = configPix.cidade || '';
+}
+
+$('form-pix').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const dados = {
+    tipo: $('pix-tipo').value,
+    chave: $('pix-chave').value.trim(),
+    nome: $('pix-nome').value.trim(),
+    cidade: $('pix-cidade').value.trim()
+  };
+  if (!Pix.validarChave(dados.chave, dados.tipo)) {
+    const exemplos = { cpf: '11 números', cnpj: '14 números', celular: 'DDD + número, ex.: (17) 99123-4567', email: 'nome@email.com', aleatoria: 'formato 1234abcd-12ab-34cd-56ef-1234567890ab' };
+    return aviso(`A chave não parece um ${$('pix-tipo').selectedOptions[0].text} válido (${exemplos[dados.tipo] || ''})`, true);
+  }
+  try {
+    const r = await api('/api/pix', { method: 'PUT', body: dados });
+    configPix = dados;
+    aviso(r.message);
+  } catch (e) { aviso(e.message, true); }
+});
+
+let vendaPix = null;
+
+window.abrirPix = (id) => {
+  const v = vendas.find(x => x.id === id);
+  if (!v) return;
+  if (!configPix.chave) {
+    aviso('Cadastre sua chave Pix em "Meu Pix" para gerar o QR Code', true);
+    $('form-pix').scrollIntoView({ behavior: 'smooth' });
+    return $('pix-tipo').focus();
+  }
+  vendaPix = v;
+  const codigo = Pix.gerarPix({ ...configPix, valor: v.valor, txid: 'VENDA' + v.id });
+  const qr = qrcode(0, 'M');
+  qr.addData(codigo);
+  qr.make();
+  $('pix-qr').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4, alt: 'QR Code do Pix', scalable: true });
+  $('pix-valor').textContent = dinheiro(v.valor);
+  $('pix-descricao').textContent = `${v.ave_nome} (${v.ave_especie} ${v.ave_cor || ''})${v.comprador_nome ? ' para ' + v.comprador_nome : ''}. ` +
+    `Recebedor: ${configPix.nome}. Peça para o comprador ler o QR Code ou colar o código no app do banco.`;
+  $('pix-codigo').value = codigo;
+  $('btn-copiar-pix').textContent = 'Copiar código';
+  $('caixa-pix').hidden = false;
+};
+
+$('btn-copiar-pix').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('pix-codigo').value);
+    $('btn-copiar-pix').textContent = 'Copiado!';
+  } catch {
+    $('pix-codigo').select();
+    aviso('Selecionei o código: use Ctrl+C (ou segure e copie no celular)', true);
+  }
+});
+
+$('btn-whats-pix').addEventListener('click', () => {
+  const v = vendaPix;
+  let numero = String(v.comprador_telefone || '').replace(/\D/g, '');
+  if (numero && numero.length <= 11) numero = '55' + numero;
+  const texto = `Olá${v.comprador_nome ? ', ' + v.comprador_nome : ''}! Segue o Pix de ${dinheiro(v.valor)} referente a ${v.ave_nome} (${v.ave_especie}).\n\nPix copia e cola:\n${$('pix-codigo').value}`;
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+});
+
+$('btn-pix-pago').addEventListener('click', async () => {
+  if (!confirm('Confirmou no app do seu banco que o Pix caiu?')) return;
+  $('caixa-pix').hidden = true;
+  await marcarPagamento(vendaPix.id, 'pago');
+});
+
+$('btn-fechar-pix').addEventListener('click', () => ($('caixa-pix').hidden = true));
 
 // ==================== CAIXA DO CÓDIGO / LINK ====================
 let fecharSegredo = null;
@@ -511,7 +805,8 @@ function mostrarSistema(usuario) {
   $('aba-usuarios').hidden = !usuario.admin;
   $('aviso-codigo').hidden = !!usuario.tem_codigo;
   limparFormAve();
-  abrirPainel('aves');
+  $('venda-data').value = hojeLocal();
+  abrirPainel('painel');
   atualizarTudo();
 }
 
@@ -602,7 +897,8 @@ $('form-redefinir').addEventListener('submit', async (ev) => {
 
 // ==================== INÍCIO ====================
 function atualizarTudo() {
-  return Promise.all([carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos()])
+  return Promise.all([carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos(),
+                      carregarPainel(), carregarVendas(), carregarPix()])
     .catch(e => aviso(e.message, true));
 }
 
