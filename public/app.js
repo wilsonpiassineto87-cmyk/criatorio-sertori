@@ -18,7 +18,24 @@ const ESPECIES = {
   },
   'Roséola': {
     'Normal (vermelha)': '#d63b2f', 'Lutino': '#f4dc4c', 'Canela': '#c47a4f', 'Pastel': '#e7a08a',
-    'Opalina': '#e0644f', 'Rubino': '#e9606a', 'Vermelha Rubino': '#cc2f3f'
+    'Opalina': '#e0644f', 'Rubino': '#e9606a', 'Vermelha Rubino': '#cc2f3f', 'Azul Branca': '#8fb6d8'
+  },
+  'Periquito Australiano': {
+    'Verde (ancestral)': '#6cc04a', 'Azul': '#4f9fd8', 'Cinza': '#9097a0', 'Lutino': '#f5e14a',
+    'Albino': '#f7f7f2', 'Violeta': '#7a62b6', 'Arlequim': '#c7df6a', 'Opalino': '#7ec7c2',
+    'Canela': '#b7926a', 'Cara Amarela': '#9fd0b0'
+  },
+  'Red Rump': {
+    'Verde (ancestral)': '#5bb35a', 'Amarelo': '#efd453', 'Lutino': '#f6e070', 'Azul': '#6aa9cf',
+    'Canela': '#b99a6a', 'Pastel': '#b8d79a', 'Opalino': '#86c37b'
+  },
+  'Bourke': {
+    'Normal': '#b58f7c', 'Rosa': '#e7a3b4', 'Rubino': '#e58aa0', 'Opalino Rosa': '#ee9cbf',
+    'Lutino': '#f4e2a0', 'Canela': '#c09a7e'
+  },
+  'Kakariki': {
+    'Verde (ancestral)': '#45a547', 'Lutino': '#f3dc5a', 'Canela': '#a9b56b', 'Arlequim': '#b7d264',
+    'Pastel': '#b5d99a', 'Cara Amarela': '#c6d84a'
   }
 };
 
@@ -49,12 +66,29 @@ function aviso(msg, erro = false) {
   toastTimer = setTimeout(() => (t.hidden = true), 3000);
 }
 
-async function api(url, opcoes = {}) {
+// Senha de acesso (só usada na versão online, quando o servidor exige)
+function lerSenha() {
+  try { return localStorage.getItem('senha-criatorio') || ''; } catch { return ''; }
+}
+function guardarSenha(senha) {
+  try { localStorage.setItem('senha-criatorio', senha); } catch {}
+}
+
+async function api(url, opcoes = {}, tentativa = 0) {
+  const senhaUsada = lerSenha();
   const resp = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
     ...opcoes,
+    headers: { 'Content-Type': 'application/json', 'x-senha': senhaUsada },
     body: opcoes.body ? JSON.stringify(opcoes.body) : undefined
   });
+  if (resp.status === 401 && tentativa < 3) {
+    // Se outra requisição já pediu uma senha nova enquanto esta estava em andamento, só tenta de novo
+    if (lerSenha() !== senhaUsada) return api(url, opcoes, tentativa);
+    const senha = prompt(tentativa ? 'Senha incorreta. Digite novamente:' : 'Digite a senha do Criatório Sertori:');
+    if (senha === null) throw new Error('Senha necessária');
+    guardarSenha(senha);
+    return api(url, opcoes, tentativa + 1);
+  }
   const dados = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(dados.error || 'Erro na requisição');
   return dados;

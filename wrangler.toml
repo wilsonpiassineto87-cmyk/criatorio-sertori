@@ -1,0 +1,8 @@
+name = "criatorio-sertori"
+pages_build_output_dir = "public"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "criatorio-sertori-db"
+database_id = "da8d9c4b-a83b-4d2b-8b45-727a6bbe8f77"
