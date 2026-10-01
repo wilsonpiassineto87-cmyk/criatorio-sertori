@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Criatório Sertori</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topo">
+    <h1>Criatório Sertori</h1>
+    <p>Calopsitas · Ring Necks · Agapórnis · Roséolas</p>
+  </header>
+
+  <nav class="abas">
+    <button class="aba ativa" data-aba="aves">Aves</button>
+    <button class="aba" data-aba="vacinas">Vacinas</button>
+    <button class="aba" data-aba="nascimentos">Nascimentos</button>
+    <button class="aba" data-aba="dados">Backup</button>
+  </nav>
+
+  <main>
+    <!-- ==================== AVES ==================== -->
+    <section id="aves" class="painel ativo">
+      <div class="resumo" id="resumo"></div>
+
+      <div class="cartao">
+        <h2 id="titulo-form-ave">Cadastrar ave</h2>
+        <form id="form-ave">
+          <input type="hidden" id="ave-id">
+          <div class="grade">
+            <label>Nome *
+              <input type="text" id="ave-nome" required>
+            </label>
+            <label>Espécie *
+              <select id="ave-especie" required></select>
+            </label>
+            <label>Cor / mutação *
+              <input type="text" id="ave-cor" list="lista-cores" required placeholder="Escolha ou digite">
+              <datalist id="lista-cores"></datalist>
+            </label>
+            <label>Sexo *
+              <select id="ave-sexo" required>
+                <option value="">Selecione</option>
+                <option>Macho</option>
+                <option>Fêmea</option>
+                <option>Indefinido</option>
+              </select>
+            </label>
+            <label>Anilha
+              <input type="text" id="ave-anilha">
+            </label>
+            <label>Registro
+              <input type="text" id="ave-registro">
+            </label>
+            <label>Idade (anos) *
+              <input type="number" id="ave-idade" min="0" step="0.1" required>
+            </label>
+          </div>
+          <div class="acoes">
+            <button type="submit" class="btn primario">Salvar</button>
+            <button type="button" class="btn" id="cancelar-edicao" hidden>Cancelar</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="cartao">
+        <div class="filtros">
+          <h2>Plantel</h2>
+          <select id="filtro-especie"><option value="">Todas as espécies</option></select>
+          <select id="filtro-sexo">
+            <option value="">Todos os sexos</option>
+            <option>Macho</option>
+            <option>Fêmea</option>
+            <option>Indefinido</option>
+          </select>
+        </div>
+        <div class="tabela-rolagem">
+          <table>
+            <thead>
+              <tr><th>Nome</th><th>Espécie</th><th>Cor</th><th>Sexo</th><th>Anilha</th><th>Registro</th><th>Idade</th><th></th></tr>
+            </thead>
+            <tbody id="tabela-aves"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== VACINAS ==================== -->
+    <section id="vacinas" class="painel">
+      <div class="cartao">
+        <h2>Registrar vacina / medicamento</h2>
+        <form id="form-vacina">
+          <div class="grade">
+            <label>Ave *
+              <select id="vacina-ave" required></select>
+            </label>
+            <label>Vacina / medicamento *
+              <input type="text" id="vacina-nome" required>
+            </label>
+            <label>Data de aplicação *
+              <input type="date" id="vacina-data" required>
+            </label>
+            <label>Próxima dose
+              <input type="date" id="vacina-proxima">
+            </label>
+            <label class="largo">Observações
+              <input type="text" id="vacina-obs">
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Registrar</button></div>
+        </form>
+      </div>
+
+      <div class="cartao">
+        <h2>Histórico</h2>
+        <div class="tabela-rolagem">
+          <table>
+            <thead>
+              <tr><th>Ave</th><th>Espécie</th><th>Vacina</th><th>Aplicação</th><th>Próxima dose</th><th>Observações</th><th></th></tr>
+            </thead>
+            <tbody id="tabela-vacinas"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== NASCIMENTOS ==================== -->
+    <section id="nascimentos" class="painel">
+      <div class="cartao">
+        <h2>Registrar nascimento</h2>
+        <form id="form-nascimento">
+          <div class="grade">
+            <label>Fêmea (mãe)
+              <select id="nasc-mae"></select>
+            </label>
+            <label>Macho (pai)
+              <select id="nasc-pai"></select>
+            </label>
+            <label>Data do nascimento *
+              <input type="date" id="nasc-data" required>
+            </label>
+            <label>Quantidade de filhotes
+              <input type="number" id="nasc-qtd" min="1" value="1">
+            </label>
+            <label class="largo">Observações
+              <input type="text" id="nasc-obs">
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Registrar</button></div>
+        </form>
+      </div>
+
+      <div class="cartao">
+        <h2>Histórico</h2>
+        <div class="tabela-rolagem">
+          <table>
+            <thead>
+              <tr><th>Data</th><th>Mãe</th><th>Pai</th><th>Filhotes</th><th>Observações</th><th></th></tr>
+            </thead>
+            <tbody id="tabela-nascimentos"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== BACKUP ==================== -->
+    <section id="dados" class="painel">
+      <div class="cartao">
+        <h2>Backup e exportação</h2>
+        <p>O sistema faz um backup automático por dia na pasta <code>backups/</code>.</p>
+        <div class="acoes">
+          <button class="btn primario" id="btn-backup">Criar backup agora</button>
+          <button class="btn" id="btn-exportar">Exportar dados (JSON)</button>
+          <label class="btn">
+            Importar dados (JSON)
+            <input type="file" id="arquivo-importar" accept="application/json" hidden>
+          </label>
+        </div>
+        <p class="aviso">Atenção: importar substitui todos os dados atuais.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
