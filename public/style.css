@@ -53,6 +53,20 @@ body {
   animation: varredura 6s linear infinite;
   background-size: 200% 100%;
 }
+.topo .logo {
+  display: block;
+  width: clamp(72px, 14vw, 104px);
+  height: auto;
+  margin: 0 auto 12px;
+  filter: drop-shadow(0 0 18px rgba(0, 240, 255, 0.35));
+  animation: flutuar 5s ease-in-out infinite;
+}
+
+@keyframes flutuar {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
 .topo h1 {
   margin: 0;
   font-family: var(--fonte-titulo);
@@ -324,5 +338,5 @@ td.botoes .btn { margin-left: 4px; }
 .toast.erro { border-color: var(--perigo); box-shadow: 0 0 18px rgba(255, 59, 107, 0.5); }
 
 @media (prefers-reduced-motion: reduce) {
-  .topo::after, .painel.ativo { animation: none; }
+  .topo::after, .topo .logo, .painel.ativo { animation: none; }
 }
