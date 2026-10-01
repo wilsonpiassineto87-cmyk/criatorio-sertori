@@ -35,8 +35,46 @@
             <input type="password" id="entrar-senha" autocomplete="current-password" required>
           </label>
         </div>
-        <div class="acoes"><button type="submit" class="btn primario">Entrar</button></div>
+        <div class="acoes">
+          <button type="submit" class="btn primario">Entrar</button>
+          <button type="button" class="link" id="link-esqueci">Esqueci a senha</button>
+        </div>
         <p class="dica">Não tem conta? Peça ao administrador do criatório para cadastrar você.</p>
+      </form>
+
+      <form id="form-recuperar" hidden>
+        <h2>Esqueci a senha</h2>
+        <p class="dica">Use o <strong>código de recuperação</strong> que você anotou. Suas aves e todos os dados continuam como estão.</p>
+        <div class="grade-simples">
+          <label>E-mail
+            <input type="email" id="recuperar-email" autocomplete="username" required>
+          </label>
+          <label>Código de recuperação
+            <input type="text" id="recuperar-codigo" placeholder="XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+          </label>
+          <label>Nova senha (mínimo 6 caracteres)
+            <input type="password" id="recuperar-senha" autocomplete="new-password" minlength="6" required>
+          </label>
+        </div>
+        <div class="acoes">
+          <button type="submit" class="btn primario">Criar nova senha</button>
+          <button type="button" class="link" id="link-voltar-entrar">Voltar</button>
+        </div>
+        <p class="dica">Perdeu o código? Peça ao administrador um <strong>link de nova senha</strong>.</p>
+      </form>
+
+      <form id="form-redefinir" hidden>
+        <h2>Criar nova senha</h2>
+        <p class="dica">Você abriu um link de redefinição enviado pelo administrador. Escolha sua nova senha. Suas aves e todos os dados continuam como estão.</p>
+        <div class="grade-simples">
+          <label>Nova senha (mínimo 6 caracteres)
+            <input type="password" id="redefinir-senha" autocomplete="new-password" minlength="6" required>
+          </label>
+          <label>Repita a nova senha
+            <input type="password" id="redefinir-senha2" autocomplete="new-password" minlength="6" required>
+          </label>
+        </div>
+        <div class="acoes"><button type="submit" class="btn primario">Salvar nova senha</button></div>
       </form>
 
       <form id="form-primeiro-admin" hidden>
@@ -67,6 +105,12 @@
   </nav>
 
   <main id="app" hidden>
+    <div class="cartao alerta" id="aviso-codigo" hidden>
+      <strong>Você ainda não tem um código de recuperação.</strong>
+      Sem ele, se esquecer a senha vai depender do administrador.
+      <button class="btn pequeno" id="btn-ir-codigo">Gerar meu código</button>
+    </div>
+
     <!-- ==================== AVES ==================== -->
     <section id="aves" class="painel ativo">
       <div class="resumo" id="resumo"></div>
@@ -267,7 +311,7 @@
     <!-- ==================== MINHA SENHA ==================== -->
     <section id="conta" class="painel">
       <div class="cartao">
-        <h2>Trocar minha senha</h2>
+        <h2>Minha senha</h2>
         <form id="form-senha">
           <div class="grade">
             <label>Senha atual
@@ -280,8 +324,35 @@
           <div class="acoes"><button type="submit" class="btn primario">Salvar nova senha</button></div>
         </form>
       </div>
+
+      <div class="cartao">
+        <h2>Código de recuperação</h2>
+        <p class="dica">É o que permite criar uma senha nova se você esquecer a atual, sem perder nada. Gerar um novo código cancela o anterior.</p>
+        <form id="form-codigo">
+          <div class="grade">
+            <label>Sua senha atual
+              <input type="password" id="codigo-senha" autocomplete="current-password" required>
+            </label>
+          </div>
+          <div class="acoes"><button type="submit" class="btn primario">Gerar novo código</button></div>
+        </form>
+      </div>
     </section>
   </main>
+
+  <!-- Caixa que mostra o código de recuperação ou o link de nova senha -->
+  <div class="sobreposicao" id="caixa-segredo" hidden>
+    <div class="cartao caixa-segredo" role="dialog" aria-modal="true" aria-labelledby="segredo-titulo">
+      <h2 id="segredo-titulo"></h2>
+      <p class="dica" id="segredo-texto"></p>
+      <div class="segredo" id="segredo-valor"></div>
+      <p class="aviso" id="segredo-alerta"></p>
+      <div class="acoes">
+        <button class="btn" id="btn-copiar-segredo">Copiar</button>
+        <button class="btn primario" id="btn-fechar-segredo">Já anotei</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 

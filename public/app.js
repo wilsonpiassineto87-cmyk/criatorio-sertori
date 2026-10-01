@@ -338,6 +338,44 @@ $('arquivo-importar').addEventListener('change', async (ev) => {
   } catch (e) { aviso(e.message, true); }
 });
 
+// ==================== CAIXA DO CÓDIGO / LINK ====================
+let fecharSegredo = null;
+
+// Mostra um código de recuperação ou link e espera o usuário confirmar que anotou
+function mostrarSegredo({ titulo, texto, valor, alerta = '', pequeno = false }) {
+  $('segredo-titulo').textContent = titulo;
+  $('segredo-texto').textContent = texto;
+  $('segredo-valor').textContent = valor;
+  $('segredo-valor').classList.toggle('pequeno', pequeno);
+  $('segredo-alerta').textContent = alerta;
+  $('btn-copiar-segredo').textContent = 'Copiar';
+  $('caixa-segredo').hidden = false;
+  $('btn-fechar-segredo').focus();
+  return new Promise(resolve => (fecharSegredo = resolve));
+}
+
+const mostrarCodigo = (titulo, texto) => (codigo) => mostrarSegredo({
+  titulo,
+  texto,
+  valor: codigo,
+  alerta: 'Anote em papel ou tire um print agora. Ele não aparece de novo.'
+});
+
+$('btn-copiar-segredo').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('segredo-valor').textContent);
+    $('btn-copiar-segredo').textContent = 'Copiado!';
+  } catch {
+    aviso('Não deu para copiar. Selecione o texto e copie manualmente.', true);
+  }
+});
+
+$('btn-fechar-segredo').addEventListener('click', () => {
+  $('caixa-segredo').hidden = true;
+  if (fecharSegredo) fecharSegredo();
+  fecharSegredo = null;
+});
+
 // ==================== USUÁRIOS (administrador) ====================
 let usuarioAtual = null;
 
@@ -353,19 +391,24 @@ async function carregarUsuarios() {
         <td>${formatarData(String(u.criado_em).split(' ')[0])}</td>
         <td class="botoes">
           ${u.id === usuarioAtual.id ? '' : `
-            <button class="btn pequeno" onclick="redefinirSenha(${u.id})">Redefinir senha</button>
+            <button class="btn pequeno" onclick="linkNovaSenha(${u.id}, '${escapar(u.nome).replace(/'/g, '&#39;')}')">Link de nova senha</button>
             <button class="btn pequeno perigo" onclick="excluirUsuario(${u.id})">Excluir</button>`}
         </td>
       </tr>`).join('');
   } catch (e) { aviso(e.message, true); }
 }
 
-window.redefinirSenha = async (id) => {
-  const senha = prompt('Nova senha para este usuário (mínimo 6 caracteres):');
-  if (senha === null) return;
+// Para quem esqueceu a senha E perdeu o código: o administrador gera um link e manda (ex.: WhatsApp)
+window.linkNovaSenha = async (id, nome) => {
   try {
-    const r = await api(`/api/usuarios/${id}/senha`, { method: 'PUT', body: { senha } });
-    aviso(r.message);
+    const r = await api(`/api/usuarios/${id}/link-senha`, { method: 'POST' });
+    await mostrarSegredo({
+      titulo: 'Link de nova senha',
+      texto: `Envie este link para ${nome}. Ao abrir, a pessoa cria uma senha nova e continua com todas as aves e dados.`,
+      valor: r.link,
+      alerta: `Vale por ${r.horas} horas e só pode ser usado uma vez. Gerar outro cancela este.`,
+      pequeno: true
+    });
   } catch (e) { aviso(e.message, true); }
 };
 
@@ -390,9 +433,14 @@ $('form-usuario').addEventListener('submit', async (ev) => {
         admin: $('usuario-novo-admin').checked
       }
     });
-    aviso(r.message);
+    const nome = $('usuario-novo-nome').value.trim();
     $('form-usuario').reset();
     carregarUsuarios();
+    await mostrarSegredo({
+      titulo: 'Usuário cadastrado!',
+      texto: `Entregue a ${nome} o e-mail, a senha inicial e este código de recuperação. Com o código, a pessoa cria uma senha nova sozinha se esquecer.`,
+      valor: r.codigo
+    });
   } catch (e) { aviso(e.message, true); }
 });
 
@@ -411,17 +459,43 @@ $('form-senha').addEventListener('submit', async (ev) => {
   } catch (e) { aviso(e.message, true); }
 });
 
+$('btn-ir-codigo').addEventListener('click', () => {
+  abrirPainel('conta');
+  $('form-codigo').scrollIntoView({ behavior: 'smooth' });
+  $('codigo-senha').focus();
+});
+
+$('form-codigo').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await api('/api/auth/novo-codigo', { method: 'POST', body: { senha_atual: $('codigo-senha').value } });
+    $('form-codigo').reset();
+    usuarioAtual.tem_codigo = 1;
+    $('aviso-codigo').hidden = true;
+    await mostrarCodigo('Seu código de recuperação', 'Se esquecer a senha, clique em "Esqueci a senha" na tela de entrar e use este código. O código anterior não vale mais.')(r.codigo);
+  } catch (e) { aviso(e.message, true); }
+});
+
 $('btn-sair').addEventListener('click', async () => {
   await api('/api/auth/sair', { method: 'POST' }).catch(() => {});
   mostrarLogin(false);
 });
 
 // ==================== LOGIN ====================
+const tokenRedefinicao = () => (location.hash.match(/^#redefinir=([0-9a-f]{64})$/) || [])[1];
+
+function limparLinkRedefinicao() {
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+function mostrarFormLogin(qual) {
+  for (const f of ['entrar', 'recuperar', 'redefinir', 'primeiro-admin']) $('form-' + f).hidden = f !== qual;
+}
+
 function mostrarLogin(precisaAdmin) {
   usuarioAtual = null;
   $('tela-login').hidden = false;
-  $('form-entrar').hidden = precisaAdmin;
-  $('form-primeiro-admin').hidden = !precisaAdmin;
+  mostrarFormLogin(tokenRedefinicao() ? 'redefinir' : precisaAdmin ? 'primeiro-admin' : 'entrar');
   $('menu').hidden = true;
   $('app').hidden = true;
   $('usuario-barra').hidden = true;
@@ -435,6 +509,7 @@ function mostrarSistema(usuario) {
   $('usuario-barra').hidden = false;
   $('usuario-nome').textContent = `Olá, ${usuario.nome}${usuario.admin ? ' (administrador)' : ''}`;
   $('aba-usuarios').hidden = !usuario.admin;
+  $('aviso-codigo').hidden = !!usuario.tem_codigo;
   limparFormAve();
   abrirPainel('aves');
   atualizarTudo();
@@ -443,7 +518,8 @@ function mostrarSistema(usuario) {
 async function iniciarSessao() {
   try {
     const estado = await api('/api/auth/estado');
-    if (estado.usuario) mostrarSistema(estado.usuario);
+    // Link de redefinição aberto: mostra o formulário mesmo se alguém estiver logado neste aparelho
+    if (estado.usuario && !tokenRedefinicao()) mostrarSistema(estado.usuario);
     else mostrarLogin(estado.precisaAdmin);
   } catch (e) {
     aviso(e.message, true);
@@ -465,15 +541,62 @@ $('form-entrar').addEventListener('submit', async (ev) => {
 $('form-primeiro-admin').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   try {
-    await api('/api/auth/primeiro-admin', {
+    const r = await api('/api/auth/primeiro-admin', {
       method: 'POST',
       body: { nome: $('admin-nome').value.trim(), email: $('admin-email').value.trim(), senha: $('admin-senha').value }
     });
     $('form-primeiro-admin').reset();
+    await mostrarCodigo('Seu código de recuperação', 'Se um dia esquecer a senha, use este código em "Esqueci a senha" para criar outra sem perder nada.')(r.codigo);
     iniciarSessao();
   } catch (e) {
     aviso(e.message, true);
     iniciarSessao(); // se outra pessoa já criou o administrador, mostra a tela de entrar
+  }
+});
+
+$('link-esqueci').addEventListener('click', () => {
+  $('recuperar-email').value = $('entrar-email').value;
+  mostrarFormLogin('recuperar');
+  $(($('recuperar-email').value ? 'recuperar-codigo' : 'recuperar-email')).focus();
+});
+
+$('link-voltar-entrar').addEventListener('click', () => mostrarFormLogin('entrar'));
+
+$('form-recuperar').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await api('/api/auth/recuperar', {
+      method: 'POST',
+      body: {
+        email: $('recuperar-email').value.trim(),
+        codigo: $('recuperar-codigo').value,
+        nova_senha: $('recuperar-senha').value
+      }
+    });
+    $('form-recuperar').reset();
+    await mostrarCodigo('Senha alterada!', 'O código que você usou não vale mais. Este é o seu novo código de recuperação:')(r.codigo);
+    iniciarSessao();
+  } catch (e) { aviso(e.message, true); }
+});
+
+$('form-redefinir').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if ($('redefinir-senha').value !== $('redefinir-senha2').value) return aviso('As duas senhas não são iguais', true);
+  try {
+    const r = await api('/api/auth/redefinir', {
+      method: 'POST',
+      body: { token: tokenRedefinicao(), nova_senha: $('redefinir-senha').value }
+    });
+    $('form-redefinir').reset();
+    limparLinkRedefinicao();
+    await mostrarCodigo('Senha criada!', 'Guarde também este código de recuperação. Com ele, você cria uma senha nova sozinho se esquecer de novo.')(r.codigo);
+    iniciarSessao();
+  } catch (e) {
+    aviso(e.message, true);
+    if (/inválido|expirou/.test(e.message)) {
+      limparLinkRedefinicao();
+      iniciarSessao();
+    }
   }
 });
 
@@ -482,6 +605,11 @@ function atualizarTudo() {
   return Promise.all([carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos()])
     .catch(e => aviso(e.message, true));
 }
+
+// Link de redefinição colado com o site já aberto
+window.addEventListener('hashchange', () => {
+  if (tokenRedefinicao()) iniciarSessao();
+});
 
 preencherEspecies();
 iniciarSessao();

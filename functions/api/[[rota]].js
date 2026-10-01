@@ -3,6 +3,8 @@
 // Cada usuário só enxerga os próprios registros (coluna usuario_id).
 
 const DIAS_SESSAO = 30;
+const HORAS_LINK_REDEFINICAO = 24;
+const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O, 1/I para não confundir
 const ITERACOES_PBKDF2 = 100000; // máximo aceito pelo Cloudflare Workers
 
 const json = (corpo, status = 200, headers = {}) => Response.json(corpo, { status, headers });
@@ -57,7 +59,8 @@ async function criarSessao(db, usuarioId) {
 async function usuarioLogado(request, db) {
   const token = lerCookie(request, 'sessao');
   if (!token) return null;
-  return db.prepare(`SELECT u.id, u.nome, u.email, u.admin FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
+  return db.prepare(`SELECT u.id, u.nome, u.email, u.admin, (u.codigo_hash IS NOT NULL) as tem_codigo
+                     FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
                      WHERE s.token_hash = ? AND s.expira_em > datetime('now')`).bind(await sha256(token)).first();
 }
 
@@ -81,6 +84,34 @@ async function inserirUsuario(db, corpo, admin, soSeVazio = false) {
     if (String(e.message).includes('UNIQUE')) throw Object.assign(new Error('Este e-mail já está cadastrado'), { status: 409 });
     throw e;
   }
+}
+
+// ==================== RECUPERAÇÃO DE SENHA ====================
+
+const senhaValida = (senha) => typeof senha === 'string' && senha.length >= 6;
+const normalizarCodigo = (codigo) => String(codigo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+function gerarCodigo() {
+  const letras = [...crypto.getRandomValues(new Uint8Array(12))].map(b => ALFABETO_CODIGO[b % 32]).join('');
+  return `${letras.slice(0, 4)}-${letras.slice(4, 8)}-${letras.slice(8)}`;
+}
+
+// Gera um código de recuperação novo (o antigo deixa de valer). Só o hash fica no banco.
+async function novoCodigo(db, uid) {
+  const codigo = gerarCodigo();
+  const { hash, salt } = await hashSenha(normalizarCodigo(codigo));
+  await db.prepare('UPDATE usuarios SET codigo_hash = ?, codigo_salt = ? WHERE id = ?').bind(hash, salt, uid).run();
+  return codigo;
+}
+
+// Troca a senha e desconecta o usuário de todos os aparelhos. Aves e demais dados não mudam.
+async function definirSenha(db, uid, senha) {
+  const { hash, salt } = await hashSenha(senha);
+  await db.batch([
+    db.prepare('UPDATE usuarios SET senha_hash = ?, senha_salt = ? WHERE id = ?').bind(hash, salt, uid),
+    db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').bind(uid),
+    db.prepare('DELETE FROM redefinicoes WHERE usuario_id = ?').bind(uid)
+  ]);
 }
 
 // ==================== DADOS DO USUÁRIO ====================
@@ -140,7 +171,37 @@ async function rotear(request, env, params) {
       if (problema) return erro(problema, 400);
       const novoId = await inserirUsuario(db, corpo, true, true);
       if (!novoId) return erro('O administrador já foi criado. Peça a ele para cadastrar você.', 403);
-      return json({ message: 'Administrador criado!' }, 200, { 'Set-Cookie': await criarSessao(db, novoId) });
+      const codigo = await novoCodigo(db, novoId);
+      return json({ message: 'Administrador criado!', codigo }, 200, { 'Set-Cookie': await criarSessao(db, novoId) });
+    }
+
+    // Esqueci a senha: e-mail + código de recuperação + senha nova
+    if (id === 'recuperar' && metodo === 'POST') {
+      if (!senhaValida(corpo.nova_senha)) return erro('A nova senha precisa ter pelo menos 6 caracteres', 400);
+      const email = String(corpo.email || '').trim().toLowerCase();
+      const u = await db.prepare('SELECT id, codigo_hash, codigo_salt FROM usuarios WHERE email = ?').bind(email).first();
+      const temCodigo = u && u.codigo_hash;
+      // Calcula o hash mesmo sem usuário/código, para não revelar pelo tempo de resposta quais e-mails existem
+      const { hash } = await hashSenha(normalizarCodigo(corpo.codigo), temCodigo ? u.codigo_salt : '00'.repeat(16));
+      if (!temCodigo || !iguais(hash, u.codigo_hash)) {
+        return erro('E-mail ou código de recuperação incorretos. Se perdeu o código, peça ao administrador um link de redefinição.', 400);
+      }
+      await definirSenha(db, u.id, corpo.nova_senha);
+      const codigo = await novoCodigo(db, u.id); // cada código só serve uma vez
+      return json({ message: 'Senha alterada! Anote seu novo código de recuperação.', codigo }, 200,
+                  { 'Set-Cookie': await criarSessao(db, u.id) });
+    }
+
+    // Link de redefinição gerado pelo administrador
+    if (id === 'redefinir' && metodo === 'POST') {
+      if (!senhaValida(corpo.nova_senha)) return erro('A nova senha precisa ter pelo menos 6 caracteres', 400);
+      const pedido = await db.prepare("SELECT usuario_id FROM redefinicoes WHERE token_hash = ? AND expira_em > datetime('now')")
+        .bind(await sha256(String(corpo.token || ''))).first();
+      if (!pedido) return erro('Este link de redefinição é inválido ou já expirou. Peça um novo ao administrador.', 400);
+      await definirSenha(db, pedido.usuario_id, corpo.nova_senha);
+      const codigo = await novoCodigo(db, pedido.usuario_id);
+      return json({ message: 'Senha criada! Anote seu novo código de recuperação.', codigo }, 200,
+                  { 'Set-Cookie': await criarSessao(db, pedido.usuario_id) });
     }
 
     if (id === 'entrar' && metodo === 'POST') {
@@ -174,6 +235,14 @@ async function rotear(request, env, params) {
     return json({ message: 'Senha alterada!' });
   }
 
+  // Gera um novo código de recuperação (pede a senha atual por segurança)
+  if (recurso === 'auth' && id === 'novo-codigo' && metodo === 'POST') {
+    const u = await db.prepare('SELECT senha_hash, senha_salt FROM usuarios WHERE id = ?').bind(uid).first();
+    const { hash } = await hashSenha(String(corpo.senha_atual || ''), u.senha_salt);
+    if (!iguais(hash, u.senha_hash)) return erro('Senha atual incorreta', 400);
+    return json({ message: 'Novo código gerado! O anterior não vale mais.', codigo: await novoCodigo(db, uid) });
+  }
+
   if (metodo !== 'GET') await backupDiario(db, uid);
 
   // ==================== USUÁRIOS (só administrador) ====================
@@ -186,25 +255,31 @@ async function rotear(request, env, params) {
                                             FROM usuarios u ORDER BY u.nome`).all();
       return json(results);
     }
-    if (metodo === 'POST') {
+    if (metodo === 'POST' && !id) {
       const problema = validarNovoUsuario(corpo);
       if (problema) return erro(problema, 400);
       const novoId = await inserirUsuario(db, corpo, !!corpo.admin);
-      return json({ id: novoId, message: 'Usuário cadastrado!' });
+      const codigo = await novoCodigo(db, novoId);
+      return json({ id: novoId, codigo, message: 'Usuário cadastrado!' });
     }
-    if (metodo === 'PUT' && id && extra === 'senha') {
-      if (typeof corpo.senha !== 'string' || corpo.senha.length < 6) return erro('A senha precisa ter pelo menos 6 caracteres', 400);
-      const nova = await hashSenha(corpo.senha);
-      const r = await db.prepare('UPDATE usuarios SET senha_hash = ?, senha_salt = ? WHERE id = ?').bind(nova.hash, nova.salt, Number(id)).run();
-      if (!r.meta.changes) return erro('Usuário não encontrado', 404);
-      await db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').bind(Number(id)).run();
-      return json({ message: 'Senha redefinida!' });
+    // Link para o usuário criar uma senha nova (vale 24 horas e uma única vez)
+    if (metodo === 'POST' && id && extra === 'link-senha') {
+      const alvo = await db.prepare('SELECT id FROM usuarios WHERE id = ?').bind(Number(id)).first();
+      if (!alvo) return erro('Usuário não encontrado', 404);
+      const token = paraHex(crypto.getRandomValues(new Uint8Array(32)));
+      await db.batch([
+        db.prepare("DELETE FROM redefinicoes WHERE usuario_id = ? OR expira_em < datetime('now')").bind(alvo.id),
+        db.prepare(`INSERT INTO redefinicoes (token_hash, usuario_id, expira_em) VALUES (?, ?, datetime('now', '+${HORAS_LINK_REDEFINICAO} hours'))`)
+          .bind(await sha256(token), alvo.id)
+      ]);
+      return json({ link: `${url.origin}/#redefinir=${token}`, horas: HORAS_LINK_REDEFINICAO });
     }
     if (metodo === 'DELETE' && id) {
       if (Number(id) === uid) return erro('Você não pode excluir a própria conta', 400);
       const alvo = Number(id);
-      const [, , , , , apagado] = await db.batch([
+      const [, , , , , , apagado] = await db.batch([
         db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').bind(alvo),
+        db.prepare('DELETE FROM redefinicoes WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM vacinas WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM nascimentos WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM aves WHERE usuario_id = ?').bind(alvo),

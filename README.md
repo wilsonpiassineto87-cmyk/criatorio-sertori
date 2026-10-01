@@ -10,6 +10,15 @@ Site: https://criatorio-sertori.pages.dev
 - No primeiro acesso, o site pede para criar a conta do **administrador**.
 - Depois disso, só o administrador cadastra novos usuários (aba **Usuários**). Ele também pode redefinir a senha de alguém ou excluir um usuário com todos os dados dele.
 - Qualquer usuário pode trocar a própria senha pelo botão **Minha senha**.
+
+### Esqueci a senha
+
+Trocar a senha **nunca apaga** aves, vacinas, nascimentos ou backups.
+
+- Cada usuário tem um **código de recuperação** (ex.: `K7MP-Q2XA-9RT4`), mostrado uma única vez quando a conta é criada. Também dá para gerar um novo em **Minha senha → Código de recuperação**.
+- Na tela de entrar, **Esqueci a senha** pede e-mail + código + senha nova. Cada código só funciona uma vez; depois de usar, o site mostra um código novo.
+- Se a pessoa perdeu o código, o administrador clica em **Link de nova senha** na aba Usuários e manda o link (por WhatsApp, por exemplo). O link vale 24 horas e uma única vez.
+- Ao trocar a senha por esses caminhos, o usuário é desconectado dos outros aparelhos.
 - As senhas são guardadas com criptografia (PBKDF2), nunca em texto puro. O login dura 30 dias ou até clicar em **Sair**.
 
 ## Funções

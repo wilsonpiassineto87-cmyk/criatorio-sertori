@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS usuarios (
   senha_hash TEXT NOT NULL,
   senha_salt TEXT NOT NULL,
   admin INTEGER NOT NULL DEFAULT 0,
-  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  -- Código de recuperação de senha (só o hash)
+  codigo_hash TEXT,
+  codigo_salt TEXT
 );
 
 -- Guarda só o hash do token de login, nunca o token em si
@@ -18,6 +21,13 @@ CREATE TABLE IF NOT EXISTS sessoes (
   expira_em DATETIME NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessoes_usuario ON sessoes(usuario_id);
+
+-- Links de redefinição de senha gerados pelo administrador (só o hash do token)
+CREATE TABLE IF NOT EXISTS redefinicoes (
+  token_hash TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL,
+  expira_em DATETIME NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS aves (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
