@@ -332,7 +332,7 @@ $('btn-exportar').addEventListener('click', async () => {
     const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `criatorio-sertori_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `criadouro-sertori_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   } catch (e) { aviso(e.message, true); }

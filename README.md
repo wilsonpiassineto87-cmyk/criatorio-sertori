@@ -1,4 +1,4 @@
-# Criatório Sertori
+# Criadouro Sertori
 
 Sistema de cadastro das aves do criatório: calopsitas, ring necks, agapórnis, roselas, periquitos australianos, red rumps, bourkes e kakarikis, com as cores (mutações) de cada uma, vacinas, nascimentos e backup.
 
@@ -38,7 +38,7 @@ As cores sugeridas para cada espécie ficam no início de `public/app.js` (objet
 
 O site roda no **Cloudflare Pages** com o banco **D1** `criatorio-sertori-db`.
 
-- `public/`: as telas (HTML, CSS, JS e logotipo). `public/pix.js` gera o código Pix (padrão BR Code do Banco Central) e `public/vendor/qrcode.js` desenha o QR Code.
+- `public/`: as telas (HTML, CSS, JS e logotipo). O logotipo está em `logo.webp`/`logo.png` (fundo transparente) e os ícones em `favicon-48.png`, `icone-192.png`, `icone-512.png` e `apple-touch-icon.png`. As cores da identidade visual ficam no início de `public/style.css`. `public/pix.js` gera o código Pix (padrão BR Code do Banco Central) e `public/vendor/qrcode.js` desenha o QR Code.
 - `functions/api/[[rota]].js`: a API (login, usuários, aves, vacinas, nascimentos e backup).
 - `schema.sql`: as tabelas do banco.
 - `wrangler.toml`: liga o banco D1 ao site (binding `DB`).
