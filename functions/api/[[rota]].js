@@ -10,7 +10,10 @@ const HOJE_BR = "date('now', '-3 hours')"; // data de hoje no horário de Brasí
 const dataValida = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 const ITERACOES_PBKDF2 = 100000; // máximo aceito pelo Cloudflare Workers
 
-const json = (corpo, status = 200, headers = {}) => Response.json(corpo, { status, headers });
+const json = (corpo, status = 200, headers = {}) => Response.json(corpo, {
+  status,
+  headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers }
+});
 const erro = (mensagem, status) => json({ error: mensagem }, status);
 const vazio = (v) => v === undefined || v === null || v === '';
 const validarAve = (b) => !vazio(b.nome) && !vazio(b.especie) && !vazio(b.cor) && !vazio(b.sexo) && !vazio(b.idade);
@@ -89,6 +92,43 @@ async function inserirUsuario(db, corpo, admin, soSeVazio = false) {
     throw e;
   }
 }
+
+// ==================== LIMITE DE TENTATIVAS ====================
+// Depois de 5 erros seguidos no mesmo e-mail (ou 30 do mesmo aparelho/rede), bloqueia por 15 minutos.
+const LIMITE_POR_CONTA = 5;
+const LIMITE_POR_IP = 30;
+const MINUTOS_BLOQUEIO = 15;
+
+const ipDe = (request) => request.headers.get('CF-Connecting-IP') || 'desconhecido';
+
+// Devolve um erro 429 se alguma das chaves estiver bloqueada; senão, null
+async function checarBloqueio(db, chaves, dica = ' ou use "Esqueci a senha"') {
+  const marcas = chaves.map(() => '?').join(',');
+  const r = await db.prepare(`SELECT MAX(CAST((julianday(bloqueado_ate) - julianday('now')) * 1440 AS INTEGER) + 1) as minutos
+                              FROM tentativas WHERE chave IN (${marcas}) AND bloqueado_ate > datetime('now')`).bind(...chaves).first();
+  if (!r || !r.minutos) return null;
+  return erro(`Muitas tentativas. Aguarde ${r.minutos} ${r.minutos === 1 ? 'minuto' : 'minutos'}${dica}.`, 429);
+}
+
+// Soma um erro em cada chave; quem chega ao limite fica bloqueado
+async function registrarFalha(db, chaves) {
+  const janela = `datetime('now', '-${MINUTOS_BLOQUEIO} minutes')`;
+  const comandos = [db.prepare(`DELETE FROM tentativas WHERE janela_inicio < datetime('now', '-1 day')
+                                AND (bloqueado_ate IS NULL OR bloqueado_ate < datetime('now'))`)];
+  for (const [chave, limite] of chaves) {
+    comandos.push(
+      db.prepare(`INSERT INTO tentativas (chave, falhas, janela_inicio) VALUES (?, 1, datetime('now'))
+                  ON CONFLICT(chave) DO UPDATE SET
+                    falhas = CASE WHEN janela_inicio < ${janela} THEN 1 ELSE falhas + 1 END,
+                    janela_inicio = CASE WHEN janela_inicio < ${janela} THEN datetime('now') ELSE janela_inicio END`).bind(chave),
+      db.prepare(`UPDATE tentativas SET bloqueado_ate = datetime('now', '+${MINUTOS_BLOQUEIO} minutes'), falhas = 0, janela_inicio = datetime('now')
+                  WHERE chave = ? AND falhas >= ?`).bind(chave, limite)
+    );
+  }
+  await db.batch(comandos);
+}
+
+const limparFalhas = (db, chave) => db.prepare('DELETE FROM tentativas WHERE chave = ?').bind(chave).run();
 
 // ==================== RECUPERAÇÃO DE SENHA ====================
 
@@ -185,14 +225,22 @@ async function rotear(request, env, params) {
     if (id === 'recuperar' && metodo === 'POST') {
       if (!senhaValida(corpo.nova_senha)) return erro('A nova senha precisa ter pelo menos 6 caracteres', 400);
       const email = String(corpo.email || '').trim().toLowerCase();
+      const chaves = [['recuperar:' + email, LIMITE_POR_CONTA], ['ip:' + ipDe(request), LIMITE_POR_IP]];
+      const bloqueio = await checarBloqueio(db, chaves.map(c => c[0]), ' ou peça ao administrador um link de nova senha');
+      if (bloqueio) return bloqueio;
       const u = await db.prepare('SELECT id, codigo_hash, codigo_salt FROM usuarios WHERE email = ?').bind(email).first();
       const temCodigo = u && u.codigo_hash;
       // Calcula o hash mesmo sem usuário/código, para não revelar pelo tempo de resposta quais e-mails existem
       const { hash } = await hashSenha(normalizarCodigo(corpo.codigo), temCodigo ? u.codigo_salt : '00'.repeat(16));
       if (!temCodigo || !iguais(hash, u.codigo_hash)) {
+        await registrarFalha(db, chaves);
         return erro('E-mail ou código de recuperação incorretos. Se perdeu o código, peça ao administrador um link de redefinição.', 400);
       }
       await definirSenha(db, u.id, corpo.nova_senha);
+      await db.batch([
+        db.prepare('DELETE FROM tentativas WHERE chave = ?').bind('recuperar:' + email),
+        db.prepare('DELETE FROM tentativas WHERE chave = ?').bind('login:' + email)
+      ]);
       const codigo = await novoCodigo(db, u.id); // cada código só serve uma vez
       return json({ message: 'Senha alterada! Anote seu novo código de recuperação.', codigo }, 200,
                   { 'Set-Cookie': await criarSessao(db, u.id) });
@@ -201,10 +249,18 @@ async function rotear(request, env, params) {
     // Link de redefinição gerado pelo administrador
     if (id === 'redefinir' && metodo === 'POST') {
       if (!senhaValida(corpo.nova_senha)) return erro('A nova senha precisa ter pelo menos 6 caracteres', 400);
+      const chaveIp = [['ip:' + ipDe(request), LIMITE_POR_IP]];
+      const bloqueio = await checarBloqueio(db, [chaveIp[0][0]], '');
+      if (bloqueio) return bloqueio;
       const pedido = await db.prepare("SELECT usuario_id FROM redefinicoes WHERE token_hash = ? AND expira_em > datetime('now')")
         .bind(await sha256(String(corpo.token || ''))).first();
-      if (!pedido) return erro('Este link de redefinição é inválido ou já expirou. Peça um novo ao administrador.', 400);
+      if (!pedido) {
+        await registrarFalha(db, chaveIp);
+        return erro('Este link de redefinição é inválido ou já expirou. Peça um novo ao administrador.', 400);
+      }
       await definirSenha(db, pedido.usuario_id, corpo.nova_senha);
+      const dono = await db.prepare('SELECT email FROM usuarios WHERE id = ?').bind(pedido.usuario_id).first();
+      if (dono) await limparFalhas(db, 'login:' + dono.email);
       const codigo = await novoCodigo(db, pedido.usuario_id);
       return json({ message: 'Senha criada! Anote seu novo código de recuperação.', codigo }, 200,
                   { 'Set-Cookie': await criarSessao(db, pedido.usuario_id) });
@@ -212,10 +268,17 @@ async function rotear(request, env, params) {
 
     if (id === 'entrar' && metodo === 'POST') {
       const email = String(corpo.email || '').trim().toLowerCase();
+      const chaves = [['login:' + email, LIMITE_POR_CONTA], ['ip:' + ipDe(request), LIMITE_POR_IP]];
+      const bloqueio = await checarBloqueio(db, chaves.map(c => c[0]));
+      if (bloqueio) return bloqueio;
       const u = await db.prepare('SELECT id, senha_hash, senha_salt FROM usuarios WHERE email = ?').bind(email).first();
       // Calcula o hash mesmo sem usuário, para não revelar quais e-mails existem pelo tempo de resposta
       const { hash } = await hashSenha(String(corpo.senha || ''), u ? u.senha_salt : '00'.repeat(16));
-      if (!u || !iguais(hash, u.senha_hash)) return erro('E-mail ou senha incorretos', 401);
+      if (!u || !iguais(hash, u.senha_hash)) {
+        await registrarFalha(db, chaves);
+        return erro('E-mail ou senha incorretos', 401);
+      }
+      await limparFalhas(db, 'login:' + email);
       return json({ message: 'Bem-vindo!' }, 200, { 'Set-Cookie': await criarSessao(db, u.id) });
     }
 
@@ -231,10 +294,23 @@ async function rotear(request, env, params) {
   if (!usuario) return erro('Faça login para continuar', 401);
   const uid = usuario.id;
 
-  if (recurso === 'auth' && id === 'trocar-senha' && metodo === 'POST') {
+  const chaveSenhaAtual = [['senha-atual:' + uid, LIMITE_POR_CONTA]];
+  async function conferirSenhaAtual() {
+    const bloqueio = await checarBloqueio(db, [chaveSenhaAtual[0][0]], '');
+    if (bloqueio) return bloqueio;
     const u = await db.prepare('SELECT senha_hash, senha_salt FROM usuarios WHERE id = ?').bind(uid).first();
     const { hash } = await hashSenha(String(corpo.senha_atual || ''), u.senha_salt);
-    if (!iguais(hash, u.senha_hash)) return erro('Senha atual incorreta', 400);
+    if (!iguais(hash, u.senha_hash)) {
+      await registrarFalha(db, chaveSenhaAtual);
+      return erro('Senha atual incorreta', 400);
+    }
+    await limparFalhas(db, chaveSenhaAtual[0][0]);
+    return null;
+  }
+
+  if (recurso === 'auth' && id === 'trocar-senha' && metodo === 'POST') {
+    const problema = await conferirSenhaAtual();
+    if (problema) return problema;
     if (typeof corpo.nova_senha !== 'string' || corpo.nova_senha.length < 6) return erro('A nova senha precisa ter pelo menos 6 caracteres', 400);
     const nova = await hashSenha(corpo.nova_senha);
     await db.prepare('UPDATE usuarios SET senha_hash = ?, senha_salt = ? WHERE id = ?').bind(nova.hash, nova.salt, uid).run();
@@ -243,9 +319,8 @@ async function rotear(request, env, params) {
 
   // Gera um novo código de recuperação (pede a senha atual por segurança)
   if (recurso === 'auth' && id === 'novo-codigo' && metodo === 'POST') {
-    const u = await db.prepare('SELECT senha_hash, senha_salt FROM usuarios WHERE id = ?').bind(uid).first();
-    const { hash } = await hashSenha(String(corpo.senha_atual || ''), u.senha_salt);
-    if (!iguais(hash, u.senha_hash)) return erro('Senha atual incorreta', 400);
+    const problema = await conferirSenhaAtual();
+    if (problema) return problema;
     return json({ message: 'Novo código gerado! O anterior não vale mais.', codigo: await novoCodigo(db, uid) });
   }
 

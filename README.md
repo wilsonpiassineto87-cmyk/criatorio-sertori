@@ -11,6 +11,8 @@ Site: https://criatorio-sertori.pages.dev
 - Depois disso, só o administrador cadastra novos usuários (aba **Usuários**). Ele também pode gerar um link de nova senha para alguém ou excluir um usuário com todos os dados dele.
 - Qualquer usuário pode trocar a própria senha pelo botão **Minha senha**.
 - As senhas são guardadas com criptografia (PBKDF2), nunca em texto puro. O login dura 30 dias ou até clicar em **Sair**.
+- **Limite de tentativas:** depois de 5 erros seguidos de senha (ou de código de recuperação) no mesmo e-mail, novas tentativas ficam bloqueadas por 15 minutos. Um mesmo aparelho/rede também é bloqueado após 30 erros. Acertar a senha zera a contagem, e o "Esqueci a senha" continua funcionando.
+- **Proteção do navegador:** `public/_headers` impede que o site seja aberto dentro de outro site e bloqueia scripts de fora.
 
 ### Esqueci a senha
 

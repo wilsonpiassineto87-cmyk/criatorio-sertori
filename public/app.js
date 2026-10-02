@@ -137,9 +137,9 @@ async function carregarAves() {
       <td>${a.idade} ${a.idade == 1 ? 'ano' : 'anos'}</td>
       <td>${a.preco != null ? dinheiro(a.preco) : '-'}</td>
       <td class="botoes">
-        <button class="btn pequeno" onclick="venderAve(${a.id})">Vender</button>
-        <button class="btn pequeno" onclick="editarAve(${a.id})">Editar</button>
-        <button class="btn pequeno perigo" onclick="excluirAve(${a.id})">Excluir</button>
+        <button class="btn pequeno" data-acao="venderAve" data-id="${a.id}">Vender</button>
+        <button class="btn pequeno" data-acao="editarAve" data-id="${a.id}">Editar</button>
+        <button class="btn pequeno perigo" data-acao="excluirAve" data-id="${a.id}">Excluir</button>
       </td>
     </tr>`).join('') : '<tr><td colspan="9" class="vazio">Nenhuma ave no plantel</td></tr>';
 }
@@ -180,7 +180,7 @@ function limparFormAve() {
   atualizarListaCores();
 }
 
-window.editarAve = async (id) => {
+const editarAve = async (id) => {
   const a = await api('/api/aves/' + id);
   $('ave-id').value = a.id;
   $('ave-nome').value = a.nome;
@@ -197,7 +197,7 @@ window.editarAve = async (id) => {
   $('form-ave').scrollIntoView({ behavior: 'smooth' });
 };
 
-window.excluirAve = async (id) => {
+const excluirAve = async (id) => {
   if (!confirm('Excluir esta ave?')) return;
   try {
     const r = await api('/api/aves/' + id, { method: 'DELETE' });
@@ -243,11 +243,11 @@ async function carregarVacinas() {
       <td>${formatarData(v.data_aplicacao)}</td>
       <td>${formatarData(v.proxima_dose)}</td>
       <td>${escapar(v.observacoes) || '-'}</td>
-      <td class="botoes"><button class="btn pequeno perigo" onclick="excluirVacina(${v.id})">Excluir</button></td>
+      <td class="botoes"><button class="btn pequeno perigo" data-acao="excluirVacina" data-id="${v.id}">Excluir</button></td>
     </tr>`).join('') : '<tr><td colspan="7" class="vazio">Nenhuma vacina registrada</td></tr>';
 }
 
-window.excluirVacina = async (id) => {
+const excluirVacina = async (id) => {
   if (!confirm('Excluir este registro de vacina?')) return;
   try {
     const r = await api('/api/vacinas/' + id, { method: 'DELETE' });
@@ -286,11 +286,11 @@ async function carregarNascimentos() {
       <td>${ave(n.pai_nome, n.pai_especie, n.pai_cor)}</td>
       <td>${n.quantidade}</td>
       <td>${escapar(n.observacoes) || '-'}</td>
-      <td class="botoes"><button class="btn pequeno perigo" onclick="excluirNascimento(${n.id})">Excluir</button></td>
+      <td class="botoes"><button class="btn pequeno perigo" data-acao="excluirNascimento" data-id="${n.id}">Excluir</button></td>
     </tr>`).join('') : '<tr><td colspan="6" class="vazio">Nenhum nascimento registrado</td></tr>';
 }
 
-window.excluirNascimento = async (id) => {
+const excluirNascimento = async (id) => {
   if (!confirm('Excluir este registro de nascimento?')) return;
   try {
     const r = await api('/api/nascimentos/' + id, { method: 'DELETE' });
@@ -462,12 +462,12 @@ async function carregarVendas() {
   $('tabela-vendas').innerHTML = lista.length ? lista.map(v => {
     const botoes = [];
     if (v.status_pagamento === 'pendente') {
-      if (v.forma_pagamento === 'Pix') botoes.push(`<button class="btn pequeno" onclick="abrirPix(${v.id})">QR Pix</button>`);
-      botoes.push(`<button class="btn pequeno" onclick="marcarPagamento(${v.id}, 'pago')">Recebi</button>`);
+      if (v.forma_pagamento === 'Pix') botoes.push(`<button class="btn pequeno" data-acao="abrirPix" data-id="${v.id}">QR Pix</button>`);
+      botoes.push(`<button class="btn pequeno" data-acao="marcarPagamento" data-id="${v.id}" data-valor="pago">Recebi</button>`);
     }
-    if (v.status_pagamento === 'pago') botoes.push(`<button class="btn pequeno" onclick="marcarPagamento(${v.id}, 'pendente')">Desfazer pago</button>`);
-    if (v.status_pagamento !== 'cancelada') botoes.push(`<button class="btn pequeno perigo" onclick="cancelarVenda(${v.id})">Cancelar</button>`);
-    botoes.push(`<button class="btn pequeno perigo" onclick="excluirVenda(${v.id})">Excluir</button>`);
+    if (v.status_pagamento === 'pago') botoes.push(`<button class="btn pequeno" data-acao="marcarPagamento" data-id="${v.id}" data-valor="pendente">Desfazer pago</button>`);
+    if (v.status_pagamento !== 'cancelada') botoes.push(`<button class="btn pequeno perigo" data-acao="cancelarVenda" data-id="${v.id}">Cancelar</button>`);
+    botoes.push(`<button class="btn pequeno perigo" data-acao="excluirVenda" data-id="${v.id}">Excluir</button>`);
     return `
     <tr>
       <td>${formatarData(v.data_venda)}</td>
@@ -485,7 +485,7 @@ async function depoisDeVenda() {
   await Promise.all([carregarVendas(), carregarAves(), carregarTodasAves(), carregarResumo(), carregarPainel()]);
 }
 
-window.venderAve = (id) => {
+const venderAve = (id) => {
   abrirPainel('vendas');
   $('venda-ave').value = String(id);
   $('venda-ave').dispatchEvent(new Event('change'));
@@ -526,7 +526,7 @@ $('form-venda').addEventListener('submit', async (ev) => {
   } catch (e) { aviso(e.message, true); }
 });
 
-window.marcarPagamento = async (id, status) => {
+const marcarPagamento = async (id, status) => {
   try {
     const r = await api(`/api/vendas/${id}/pagamento`, { method: 'PUT', body: { status_pagamento: status } });
     aviso(r.message);
@@ -534,7 +534,7 @@ window.marcarPagamento = async (id, status) => {
   } catch (e) { aviso(e.message, true); }
 };
 
-window.cancelarVenda = async (id) => {
+const cancelarVenda = async (id) => {
   if (!confirm('Cancelar esta venda? A ave volta para o plantel.')) return;
   try {
     const r = await api(`/api/vendas/${id}/cancelar`, { method: 'POST' });
@@ -543,7 +543,7 @@ window.cancelarVenda = async (id) => {
   } catch (e) { aviso(e.message, true); }
 };
 
-window.excluirVenda = async (id) => {
+const excluirVenda = async (id) => {
   const v = vendas.find(x => x.id === id);
   const extra = v && v.status_pagamento !== 'cancelada' ? ' A ave volta para o plantel.' : '';
   if (!confirm('Excluir este registro de venda?' + extra)) return;
@@ -584,7 +584,7 @@ $('form-pix').addEventListener('submit', async (ev) => {
 
 let vendaPix = null;
 
-window.abrirPix = (id) => {
+const abrirPix = (id) => {
   const v = vendas.find(x => x.id === id);
   if (!v) return;
   if (!configPix.chave) {
@@ -672,10 +672,12 @@ $('btn-fechar-segredo').addEventListener('click', () => {
 
 // ==================== USUÁRIOS (administrador) ====================
 let usuarioAtual = null;
+let usuariosLista = [];
 
 async function carregarUsuarios() {
   try {
     const lista = await api('/api/usuarios');
+    usuariosLista = lista;
     $('tabela-usuarios').innerHTML = lista.map(u => `
       <tr>
         <td>${escapar(u.nome)}${u.id === usuarioAtual.id ? ' <small>(você)</small>' : ''}</td>
@@ -685,15 +687,16 @@ async function carregarUsuarios() {
         <td>${formatarData(String(u.criado_em).split(' ')[0])}</td>
         <td class="botoes">
           ${u.id === usuarioAtual.id ? '' : `
-            <button class="btn pequeno" onclick="linkNovaSenha(${u.id}, '${escapar(u.nome).replace(/'/g, '&#39;')}')">Link de nova senha</button>
-            <button class="btn pequeno perigo" onclick="excluirUsuario(${u.id})">Excluir</button>`}
+            <button class="btn pequeno" data-acao="linkNovaSenha" data-id="${u.id}">Link de nova senha</button>
+            <button class="btn pequeno perigo" data-acao="excluirUsuario" data-id="${u.id}">Excluir</button>`}
         </td>
       </tr>`).join('');
   } catch (e) { aviso(e.message, true); }
 }
 
 // Para quem esqueceu a senha E perdeu o código: o administrador gera um link e manda (ex.: WhatsApp)
-window.linkNovaSenha = async (id, nome) => {
+const linkNovaSenha = async (id) => {
+  const nome = (usuariosLista.find(u => u.id === id) || {}).nome || 'o usuário';
   try {
     const r = await api(`/api/usuarios/${id}/link-senha`, { method: 'POST' });
     await mostrarSegredo({
@@ -706,7 +709,7 @@ window.linkNovaSenha = async (id, nome) => {
   } catch (e) { aviso(e.message, true); }
 };
 
-window.excluirUsuario = async (id) => {
+const excluirUsuario = async (id) => {
   if (!confirm('Excluir este usuário e TODAS as aves, vacinas e nascimentos dele? Não dá para desfazer.')) return;
   try {
     const r = await api('/api/usuarios/' + id, { method: 'DELETE' });
@@ -901,6 +904,14 @@ function atualizarTudo() {
                       carregarPainel(), carregarVendas(), carregarPix()])
     .catch(e => aviso(e.message, true));
 }
+
+// Botões das tabelas: um só controlador, sem JavaScript dentro do HTML
+const ACOES = { editarAve, excluirAve, excluirVacina, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
+document.addEventListener('click', (ev) => {
+  const botao = ev.target.closest('[data-acao]');
+  if (!botao || !ACOES[botao.dataset.acao]) return;
+  ACOES[botao.dataset.acao](Number(botao.dataset.id), botao.dataset.valor);
+});
 
 // Link de redefinição colado com o site já aberto
 window.addEventListener('hashchange', () => {

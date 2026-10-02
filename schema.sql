@@ -107,3 +107,11 @@ CREATE TABLE IF NOT EXISTS config_pix (
   nome TEXT NOT NULL,
   cidade TEXT NOT NULL
 );
+
+-- Tentativas erradas de login/recuperação, para bloquear robôs (15 minutos após o limite)
+CREATE TABLE IF NOT EXISTS tentativas (
+  chave TEXT PRIMARY KEY,          -- ex.: login:email, recuperar:email, ip:1.2.3.4
+  falhas INTEGER NOT NULL DEFAULT 0,
+  janela_inicio DATETIME NOT NULL,
+  bloqueado_ate DATETIME
+);
