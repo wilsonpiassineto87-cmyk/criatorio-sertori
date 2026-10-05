@@ -443,6 +443,15 @@ function barras(itens, vazio) {
     </li>`).join('')}</ul>`;
 }
 
+// Linha de total embaixo das barras: soma dos valores e da quantidade de vendas
+function linhaTotal(itens, umItem, varios) {
+  if (!itens.length) return '';
+  const valor = itens.reduce((soma, i) => soma + (Number(i.valor) || 0), 0);
+  const qtd = itens.reduce((soma, i) => soma + (Number(i.vendas) || 0), 0);
+  return `<div class="linha-total"><span>Total</span>
+    <span class="barra-valor">${dinheiro(valor)}<small>${qtd} ${qtd === 1 ? umItem : varios}</small></span></div>`;
+}
+
 // Colunas por mês (12 meses, incluindo os sem venda)
 function colunasMeses(dados, hoje) {
   const [ano, mes] = hoje.split('-').map(Number);
@@ -499,10 +508,10 @@ async function carregarPainel() {
   $('painel-meses').innerHTML = colunasMeses(d.vendas_por_mes, d.hoje);
   $('painel-formas').innerHTML = barras(
     d.formas_pagamento.map(f => ({ rotulo: f.forma_pagamento, valor: f.valor, texto: dinheiro(f.valor), detalhe: `${f.vendas} ${f.vendas === 1 ? 'venda' : 'vendas'}` })),
-    'Nenhuma venda ainda');
+    'Nenhuma venda ainda') + linhaTotal(d.formas_pagamento, 'venda', 'vendas');
   $('painel-especies-vendidas').innerHTML = barras(
     d.especies_vendidas.map(e => ({ rotulo: e.especie, valor: e.valor, texto: dinheiro(e.valor), detalhe: `${e.vendas} ${e.vendas === 1 ? 'ave' : 'aves'}` })),
-    'Nenhuma venda ainda');
+    'Nenhuma venda ainda') + linhaTotal(d.especies_vendidas, 'ave', 'aves');
   $('painel-ultimas').innerHTML = d.ultimas_vendas.length ? d.ultimas_vendas.map(x => `
     <tr>
       <td>${formatarData(x.data_venda)}</td>

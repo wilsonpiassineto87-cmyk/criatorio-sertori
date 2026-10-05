@@ -420,6 +420,16 @@ td.botoes .btn { margin-left: 4px; }
 .barras li:hover .barra { background: var(--floresta); }
 .barra-valor { text-align: right; white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
 .barra-valor small { display: block; color: var(--suave); font-size: .74rem; font-weight: 400; }
+.linha-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 2px solid var(--borda);
+  font-weight: 800;
+  color: var(--floresta);
+}
 
 /* Colunas por mês */
 .colunas {
