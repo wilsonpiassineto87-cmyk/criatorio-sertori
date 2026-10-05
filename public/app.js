@@ -1030,6 +1030,14 @@ document.addEventListener('click', (ev) => {
   ACOES[botao.dataset.acao](Number(botao.dataset.id), botao.dataset.valor);
 });
 
+// Logo: volta para a página inicial (Painel) sem recarregar o site
+$('link-logo').addEventListener('click', (ev) => {
+  if (!usuarioAtual) return; // fora do sistema, o link leva para a tela inicial normal
+  ev.preventDefault();
+  abrirPainel('painel');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
 // Link de redefinição colado com o site já aberto
 window.addEventListener('hashchange', () => {
   if (tokenRedefinicao()) iniciarSessao();
