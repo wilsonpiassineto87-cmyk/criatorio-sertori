@@ -76,6 +76,11 @@ body {
   margin: 0 auto 4px;
   filter: drop-shadow(0 6px 14px rgba(20, 53, 40, 0.25));
 }
+.link-logo { display: inline-block; border-radius: var(--raio); }
+.link-logo:hover .logo { transform: scale(1.03); }
+.link-logo:focus-visible { outline: 3px solid var(--asa); outline-offset: 4px; }
+.topo .logo { transition: transform .15s ease; }
+
 /* O nome já está no logotipo; o título fica só para leitores de tela */
 .topo h1 {
   position: absolute;
@@ -567,3 +572,32 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .painel.ativo { animation: none; }
 }
+
+/* Espécies (aba Aves) */
+.lista-especies { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.especie-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  border: 1.5px solid var(--borda);
+  border-radius: 999px;
+  font-size: .9rem;
+}
+.especie-chip small { color: var(--suave); }
+.especie-chip button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--perigo);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.especie-chip button:hover { background: var(--perigo-claro); }
+#form-especie input { flex: 1 1 200px; }
+.situacao.vendida { color: var(--suave); background: #eef2f0; }
+.escolhas { flex-direction: column; align-items: stretch; }
+.escolhas .btn { text-align: left; }
