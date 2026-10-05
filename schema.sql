@@ -38,13 +38,24 @@ CREATE TABLE IF NOT EXISTS aves (
   sexo TEXT NOT NULL,
   anilha TEXT,
   registro TEXT,
-  idade REAL NOT NULL,
+  idade REAL NOT NULL,                    -- idade em anos no dia do cadastro (a tela calcula pela data de nascimento)
   status TEXT NOT NULL DEFAULT 'plantel', -- 'plantel' ou 'vendida'
   preco REAL,                             -- preço de venda pedido (opcional)
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
-  atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  data_nascimento DATE,
+  mae_id INTEGER,                         -- família: ids da mãe e do pai (opcionais)
+  pai_id INTEGER,
+  nascimento_id INTEGER                   -- ninhada de onde o filhote veio (aba Nascimentos)
 );
 CREATE INDEX IF NOT EXISTS idx_aves_usuario ON aves(usuario_id);
+
+-- Para um banco criado antes da data de nascimento e da família, rode uma vez:
+--   ALTER TABLE aves ADD COLUMN data_nascimento DATE;
+--   ALTER TABLE aves ADD COLUMN mae_id INTEGER;
+--   ALTER TABLE aves ADD COLUMN pai_id INTEGER;
+--   ALTER TABLE aves ADD COLUMN nascimento_id INTEGER;
+--   UPDATE aves SET data_nascimento = date(criado_em, '-' || CAST(ROUND(idade * 12) AS INTEGER) || ' months') WHERE data_nascimento IS NULL;
 
 CREATE TABLE IF NOT EXISTS vacinas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

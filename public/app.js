@@ -98,7 +98,27 @@ document.querySelectorAll('.aba').forEach(botao => {
 });
 
 // ==================== AVES ====================
-let aves = [];
+let aves = [];      // aves do plantel
+let avesTodas = []; // plantel + vendidas (para mãe, pai e família)
+
+// Idade calculada pela data de nascimento (ex.: "1 ano e 3 meses"); sem data, usa a idade antiga
+function idadeTexto(a) {
+  if (!a.data_nascimento) return a.idade != null ? `${a.idade} ${a.idade == 1 ? 'ano' : 'anos'}` : '-';
+  const [ano, mes, dia] = a.data_nascimento.split('-').map(Number);
+  const hoje = new Date();
+  let meses = (hoje.getFullYear() - ano) * 12 + (hoje.getMonth() + 1 - mes);
+  if (hoje.getDate() < dia) meses--;
+  if (meses < 1) {
+    const dias = Math.max(0, Math.floor((hoje - new Date(ano, mes - 1, dia)) / 86400000));
+    return `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+  }
+  const anos = Math.floor(meses / 12), resto = meses % 12;
+  const txtMeses = `${resto} ${resto === 1 ? 'mês' : 'meses'}`;
+  if (!anos) return txtMeses;
+  return `${anos} ${anos === 1 ? 'ano' : 'anos'}${resto ? ' e ' + txtMeses : ''}`;
+}
+
+const aveTodas = (id) => avesTodas.find(a => a.id === id);
 
 // Mudanças do usuário na lista de espécies (guardadas no banco): padrão excluídas e espécies novas
 let especiesConfig = { ocultas: [], extras: [] };
@@ -198,10 +218,11 @@ async function carregarAves() {
       <td>${escapar(a.sexo)}</td>
       <td>${escapar(a.anilha) || '-'}</td>
       <td>${escapar(a.registro) || '-'}</td>
-      <td>${a.idade} ${a.idade == 1 ? 'ano' : 'anos'}</td>
+      <td>${idadeTexto(a)}</td>
       <td>${a.preco != null ? dinheiro(a.preco) : '-'}</td>
       <td class="botoes">
         ${a.status === 'vendida' ? '' : `<button class="btn pequeno" data-acao="venderAve" data-id="${a.id}">Vender</button>`}
+        <button class="btn pequeno" data-acao="verFamilia" data-id="${a.id}">Família</button>
         <button class="btn pequeno" data-acao="editarAve" data-id="${a.id}">Editar</button>
         <button class="btn pequeno perigo" data-acao="excluirAve" data-id="${a.id}" data-valor="${escapar(a.status)}">Excluir</button>
       </td>
@@ -209,8 +230,17 @@ async function carregarAves() {
 }
 
 async function carregarTodasAves() {
-  aves = await api('/api/aves');
+  avesTodas = await api('/api/aves?status=todas');
+  aves = avesTodas.filter(a => a.status === 'plantel');
   const rotulo = a => `${escapar(a.nome)} — ${escapar(a.especie)} ${escapar(a.cor)}${a.anilha ? ' (' + escapar(a.anilha) + ')' : ''}`;
+  // Mãe e pai podem ser aves já vendidas
+  const opcoesPais = (sexo) => '<option value="">—</option>' + avesTodas.filter(a => a.sexo === sexo)
+    .map(a => `<option value="${a.id}">${rotulo(a)}${a.status === 'vendida' ? ' · vendida' : ''}</option>`).join('');
+  for (const [campo, sexo] of [['ave-mae', 'Fêmea'], ['ave-pai', 'Macho']]) {
+    const atual = $(campo).value;
+    $(campo).innerHTML = opcoesPais(sexo);
+    $(campo).value = atual;
+  }
   $('vacina-ave').innerHTML = '<option value="">Selecione</option>' +
     aves.map(a => `<option value="${a.id}">${rotulo(a)}</option>`).join('');
   $('nasc-mae').innerHTML = '<option value="">—</option>' +
@@ -239,6 +269,7 @@ async function carregarResumo() {
 function limparFormAve() {
   $('form-ave').reset();
   $('ave-id').value = '';
+  $('ave-ninhada').value = '';
   $('titulo-form-ave').textContent = 'Cadastrar ave';
   $('cancelar-edicao').hidden = true;
   atualizarListaCores();
@@ -254,7 +285,10 @@ const editarAve = async (id) => {
   $('ave-sexo').value = a.sexo;
   $('ave-anilha').value = a.anilha;
   $('ave-registro').value = a.registro;
-  $('ave-idade').value = a.idade;
+  $('ave-nascimento').value = a.data_nascimento || '';
+  $('ave-mae').value = a.mae_id ?? '';
+  $('ave-pai').value = a.pai_id ?? '';
+  $('ave-ninhada').value = a.nascimento_id ?? '';
   $('ave-preco').value = a.preco ?? '';
   $('titulo-form-ave').textContent = 'Editar ave';
   $('cancelar-edicao').hidden = false;
@@ -285,16 +319,77 @@ $('form-ave').addEventListener('submit', async (ev) => {
     sexo: $('ave-sexo').value,
     anilha: $('ave-anilha').value.trim(),
     registro: $('ave-registro').value.trim(),
-    idade: $('ave-idade').value,
+    data_nascimento: $('ave-nascimento').value,
+    mae_id: $('ave-mae').value,
+    pai_id: $('ave-pai').value,
+    nascimento_id: $('ave-ninhada').value,
     preco: $('ave-preco').value
   };
+  if (!id && body.mae_id && body.pai_id && !conferirParentesco(Number(body.mae_id), Number(body.pai_id))) return;
   try {
     const r = await api(id ? '/api/aves/' + id : '/api/aves', { method: id ? 'PUT' : 'POST', body });
     aviso(r.message);
     limparFormAve();
-    atualizarTudo();
+    await atualizarTudo();
+    // Filhote de uma ninhada: já prepara o formulário para o próximo, se faltar algum
+    const ninhada = !id && nascimentos.find(n => String(n.id) === body.nascimento_id);
+    if (ninhada && ninhada.cadastrados < ninhada.quantidade) cadastrarFilhote(ninhada.id);
   } catch (e) { aviso(e.message, true); }
 });
+
+// ==================== FAMÍLIA ====================
+// Grau de parentesco entre duas aves, pelo que está cadastrado (ou null se não houver)
+function parentesco(idA, idB) {
+  const a = aveTodas(idA), b = aveTodas(idB);
+  if (!a || !b) return null;
+  const pais = (x) => [x.mae_id, x.pai_id].filter(Boolean);
+  if (pais(a).includes(b.id) || pais(b).includes(a.id)) return 'mãe/pai e filho(a)';
+  const comuns = pais(a).filter(p => pais(b).includes(p));
+  if (comuns.length === 2) return 'irmãos';
+  if (comuns.length === 1) return 'meio-irmãos';
+  const avos = (x) => pais(x).flatMap(p => (aveTodas(p) ? pais(aveTodas(p)) : []));
+  if (avos(a).includes(b.id) || avos(b).includes(a.id)) return 'avô/avó e neto(a)';
+  if (avos(a).some(p => avos(b).includes(p))) return 'primos';
+  return null;
+}
+
+// Avisa antes de juntar parentes como casal. Devolve true para continuar.
+function conferirParentesco(maeId, paiId) {
+  const grau = parentesco(maeId, paiId);
+  if (!grau) return true;
+  return confirm(`Atenção: ${aveTodas(maeId).nome} e ${aveTodas(paiId).nome} são ${grau}. ` +
+    'Cruzar parentes aumenta o risco de problemas de saúde nos filhotes. Continuar mesmo assim?');
+}
+
+function mostrarInfo(titulo, html) {
+  $('info-titulo').textContent = titulo;
+  $('info-conteudo').innerHTML = html;
+  $('caixa-info').hidden = false;
+  $('btn-fechar-info').focus();
+}
+$('btn-fechar-info').addEventListener('click', () => ($('caixa-info').hidden = true));
+$('caixa-info').addEventListener('click', (ev) => { if (ev.target === $('caixa-info')) $('caixa-info').hidden = true; });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') $('caixa-info').hidden = true; });
+
+const verFamilia = (id) => {
+  const a = aveTodas(id);
+  if (!a) return;
+  const nomeAve = (x) => x ? `${escapar(x.nome)} <small>(${escapar(x.cor)}${x.status === 'vendida' ? ', vendida' : ''})</small>` : '<small>não informado</small>';
+  const lista = (itens) => itens.length ? `<ul>${itens.map(x => `<li>${nomeAve(x)}</li>`).join('')}</ul>` : '<p class="dica">Nenhum cadastrado</p>';
+  const mae = aveTodas(a.mae_id), pai = aveTodas(a.pai_id);
+  const avos = [mae, pai].filter(Boolean).flatMap(p => [aveTodas(p.mae_id), aveTodas(p.pai_id)]).filter(Boolean);
+  const irmaos = avesTodas.filter(x => x.id !== a.id &&
+    ((a.mae_id && x.mae_id === a.mae_id) || (a.pai_id && x.pai_id === a.pai_id)));
+  const filhos = avesTodas.filter(x => x.mae_id === a.id || x.pai_id === a.id);
+  mostrarInfo(`Família de ${a.nome}`, `
+    <div class="familia">
+      <div><h3>Mãe</h3>${nomeAve(mae)}</div>
+      <div><h3>Pai</h3>${nomeAve(pai)}</div>
+      <div><h3>Avós</h3>${lista(avos)}</div>
+      <div><h3>Irmãos</h3>${lista(irmaos)}</div>
+      <div><h3>Filhotes</h3>${lista(filhos)}</div>
+    </div>`);
+};
 
 $('filtro-especie').addEventListener('change', carregarAves);
 $('filtro-situacao').addEventListener('change', carregarAves);
@@ -344,19 +439,45 @@ $('form-vacina').addEventListener('submit', async (ev) => {
 });
 
 // ==================== NASCIMENTOS ====================
+let nascimentos = [];
+
 async function carregarNascimentos() {
-  const lista = await api('/api/nascimentos');
+  const lista = nascimentos = await api('/api/nascimentos');
   const ave = (nome, especie, cor) => nome ? `${escapar(nome)} <small>(${escapar(especie)} ${escapar(cor)})</small>` : '-';
   $('tabela-nascimentos').innerHTML = lista.length ? lista.map(n => `
     <tr>
       <td>${formatarData(n.data_nascimento)}</td>
       <td>${ave(n.mae_nome, n.mae_especie, n.mae_cor)}</td>
       <td>${ave(n.pai_nome, n.pai_especie, n.pai_cor)}</td>
-      <td>${n.quantidade}</td>
+      <td>${n.quantidade}<span class="filhotes-contagem">${n.cadastrados} de ${n.quantidade} no plantel</span></td>
       <td>${escapar(n.observacoes) || '-'}</td>
-      <td class="botoes"><button class="btn pequeno perigo" data-acao="excluirNascimento" data-id="${n.id}">Excluir</button></td>
+      <td class="botoes">
+        ${n.cadastrados < n.quantidade ? `<button class="btn pequeno" data-acao="cadastrarFilhote" data-id="${n.id}">Cadastrar filhote</button>` : ''}
+        <button class="btn pequeno perigo" data-acao="excluirNascimento" data-id="${n.id}">Excluir</button>
+      </td>
     </tr>`).join('') : '<tr><td colspan="6" class="vazio">Nenhum nascimento registrado</td></tr>';
 }
+
+// Abre o cadastro de ave já preenchido com os dados da ninhada
+const cadastrarFilhote = (id) => {
+  const n = nascimentos.find(x => x.id === id);
+  if (!n) return;
+  abrirPainel('aves');
+  limparFormAve();
+  $('ave-ninhada').value = n.id;
+  $('ave-nascimento').value = n.data_nascimento;
+  $('ave-mae').value = n.mae_id ?? '';
+  $('ave-pai').value = n.pai_id ?? '';
+  const especie = n.mae_especie || n.pai_especie;
+  if (especie) {
+    garantirEspecie('ave-especie', especie);
+    atualizarListaCores();
+  }
+  $('titulo-form-ave').textContent = `Cadastrar filhote ${n.cadastrados + 1} de ${n.quantidade} (nascido em ${formatarData(n.data_nascimento)})`;
+  $('cancelar-edicao').hidden = false;
+  $('form-ave').scrollIntoView({ behavior: 'smooth' });
+  $('ave-nome').focus({ preventScroll: true });
+};
 
 const excluirNascimento = async (id) => {
   if (!confirm('Excluir este registro de nascimento?')) return;
@@ -369,6 +490,8 @@ const excluirNascimento = async (id) => {
 
 $('form-nascimento').addEventListener('submit', async (ev) => {
   ev.preventDefault();
+  const maeId = Number($('nasc-mae').value), paiId = Number($('nasc-pai').value);
+  if (maeId && paiId && !conferirParentesco(maeId, paiId)) return;
   try {
     const r = await api('/api/nascimentos', {
       method: 'POST',
@@ -382,7 +505,8 @@ $('form-nascimento').addEventListener('submit', async (ev) => {
     });
     aviso(r.message);
     $('form-nascimento').reset();
-    carregarNascimentos();
+    await carregarNascimentos();
+    if (confirm('Nascimento registrado! Quer cadastrar os filhotes no plantel agora?')) cadastrarFilhote(r.id);
   } catch (e) { aviso(e.message, true); }
 });
 
@@ -612,7 +736,9 @@ const marcarPagamento = async (id, status) => {
 };
 
 const cancelarVenda = async (id) => {
-  if (!confirm('Cancelar esta venda? A ave volta para o plantel.')) return;
+  const v = vendas.find(x => x.id === id);
+  const aveExiste = v && aveTodas(v.ave_id);
+  if (!confirm('Cancelar esta venda?' + (aveExiste ? ' A ave volta para o plantel.' : ' A ave foi excluída do cadastro e não volta para o plantel.'))) return;
   try {
     const r = await api(`/api/vendas/${id}/cancelar`, { method: 'POST' });
     aviso(r.message);
@@ -1032,7 +1158,7 @@ function atualizarTudo() {
 }
 
 // Botões das tabelas: um só controlador, sem JavaScript dentro do HTML
-const ACOES = { editarAve, excluirAve, excluirEspecie, restaurarEspecie, excluirVacina, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
+const ACOES = { editarAve, verFamilia, cadastrarFilhote, excluirAve, excluirEspecie, restaurarEspecie, excluirVacina, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
 document.addEventListener('click', (ev) => {
   const botao = ev.target.closest('[data-acao]');
   if (!botao || !ACOES[botao.dataset.acao]) return;

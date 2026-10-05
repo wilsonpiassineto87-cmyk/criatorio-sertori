@@ -610,4 +610,11 @@ textarea {
 #form-especie input { flex: 1 1 200px; }
 .situacao.vendida { color: var(--suave); background: #eef2f0; }
 .escolhas { flex-direction: column; align-items: stretch; }
+
+/* Família da ave */
+.familia { display: grid; gap: 12px; margin-top: 8px; }
+.familia h3 { margin: 0 0 4px; font-size: .95rem; color: var(--floresta); }
+.familia ul { margin: 0; padding-left: 18px; }
+.familia li { margin: 2px 0; }
+.filhotes-contagem { display: block; color: var(--suave); font-size: .8rem; }
 .escolhas .btn { text-align: left; }
