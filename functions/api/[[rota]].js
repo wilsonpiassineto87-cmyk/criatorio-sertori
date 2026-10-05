@@ -16,7 +16,14 @@ const json = (corpo, status = 200, headers = {}) => Response.json(corpo, {
 });
 const erro = (mensagem, status) => json({ error: mensagem }, status);
 const vazio = (v) => v === undefined || v === null || v === '';
-const validarAve = (b) => !vazio(b.nome) && !vazio(b.especie) && !vazio(b.cor) && !vazio(b.sexo) && !vazio(b.idade);
+const validarAve = (b) => !vazio(b.nome) && !vazio(b.especie) && !vazio(b.cor) && !vazio(b.sexo) && dataValida(b.data_nascimento);
+const idOuNulo = (v) => (vazio(v) ? null : Number(v));
+
+// Idade em anos (com uma casa decimal) a partir da data de nascimento, para a coluna "idade"
+function idadeEmAnos(data) {
+  const dias = (Date.now() - new Date(data + 'T12:00:00-03:00').getTime()) / 86400000;
+  return Math.max(0, Math.round((dias / 365.25) * 10) / 10);
+}
 const precoOuNulo = (v) => (vazio(v) || !(Number(v) >= 0) ? null : Math.round(Number(v) * 100) / 100);
 const emailValido = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
@@ -162,7 +169,8 @@ async function definirSenha(db, uid, senha) {
 
 async function exportarTudo(db, uid) {
   const [aves, vacinas, nascimentos, vendas] = await db.batch([
-    db.prepare('SELECT id, nome, especie, cor, sexo, anilha, registro, idade, status, preco, criado_em, atualizado_em FROM aves WHERE usuario_id = ?').bind(uid),
+    db.prepare(`SELECT id, nome, especie, cor, sexo, anilha, registro, idade, data_nascimento, mae_id, pai_id, nascimento_id,
+                       status, preco, criado_em, atualizado_em FROM aves WHERE usuario_id = ?`).bind(uid),
     db.prepare('SELECT id, ave_id, nome_vacina, data_aplicacao, proxima_dose, observacoes FROM vacinas WHERE usuario_id = ?').bind(uid),
     db.prepare('SELECT id, mae_id, pai_id, data_nascimento, quantidade, observacoes FROM nascimentos WHERE usuario_id = ?').bind(uid),
     db.prepare(`SELECT id, ave_id, ave_nome, ave_especie, ave_cor, comprador_nome, comprador_telefone, valor, forma_pagamento,
@@ -399,22 +407,33 @@ async function rotear(request, env, params) {
       const ave = await db.prepare('SELECT * FROM aves WHERE id = ? AND usuario_id = ?').bind(id, uid).first();
       return ave ? json(ave) : erro('Ave não encontrada', 404);
     }
-    if (metodo === 'POST') {
+    if (metodo === 'POST' || metodo === 'PUT') {
       if (!validarAve(corpo)) return erro('Preencha todos os campos obrigatórios', 400);
-      const r = await db.prepare('INSERT INTO aves (usuario_id, nome, especie, cor, sexo, anilha, registro, idade, preco) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(uid, corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '', Number(corpo.idade), precoOuNulo(corpo.preco)).run();
-      return json({ id: r.meta.last_row_id, message: 'Ave cadastrada com sucesso!' });
-    }
-    if (metodo === 'PUT') {
-      if (!validarAve(corpo)) return erro('Preencha todos os campos obrigatórios', 400);
-      const r = await db.prepare(`UPDATE aves SET nome=?, especie=?, cor=?, sexo=?, anilha=?, registro=?, idade=?, preco=?, atualizado_em=CURRENT_TIMESTAMP
-                                  WHERE id=? AND usuario_id=?`)
-        .bind(corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '', Number(corpo.idade),
-              precoOuNulo(corpo.preco), id, uid).run();
+      if (corpo.data_nascimento > new Date().toISOString().slice(0, 10)) return erro('A data de nascimento não pode ser no futuro', 400);
+      const maeId = idOuNulo(corpo.mae_id), paiId = idOuNulo(corpo.pai_id), ninhadaId = idOuNulo(corpo.nascimento_id);
+      if (id && (maeId === Number(id) || paiId === Number(id))) return erro('A ave não pode ser mãe ou pai dela mesma', 400);
+      if (!(await aveDoUsuario(db, maeId, uid)) || !(await aveDoUsuario(db, paiId, uid))) return erro('Mãe ou pai não encontrado', 404);
+      if (ninhadaId && !(await db.prepare('SELECT 1 FROM nascimentos WHERE id = ? AND usuario_id = ?').bind(ninhadaId, uid).first())) {
+        return erro('Nascimento não encontrado', 404);
+      }
+      const campos = [corpo.nome, corpo.especie, corpo.cor, corpo.sexo, corpo.anilha || '', corpo.registro || '',
+                      idadeEmAnos(corpo.data_nascimento), corpo.data_nascimento, maeId, paiId, ninhadaId, precoOuNulo(corpo.preco)];
+      if (metodo === 'POST') {
+        const r = await db.prepare(`INSERT INTO aves (nome, especie, cor, sexo, anilha, registro, idade, data_nascimento, mae_id, pai_id, nascimento_id, preco, usuario_id)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(...campos, uid).run();
+        return json({ id: r.meta.last_row_id, message: 'Ave cadastrada com sucesso!' });
+      }
+      const r = await db.prepare(`UPDATE aves SET nome=?, especie=?, cor=?, sexo=?, anilha=?, registro=?, idade=?, data_nascimento=?, mae_id=?, pai_id=?,
+                                  nascimento_id=?, preco=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=? AND usuario_id=?`).bind(...campos, id, uid).run();
       return r.meta.changes ? json({ message: 'Ave atualizada com sucesso!' }) : erro('Ave não encontrada', 404);
     }
     if (metodo === 'DELETE') {
-      const r = await db.prepare('DELETE FROM aves WHERE id = ? AND usuario_id = ?').bind(id, uid).run();
+      // Os filhotes continuam cadastrados, só perdem a ligação com a ave excluída
+      const [r] = await db.batch([
+        db.prepare('DELETE FROM aves WHERE id = ? AND usuario_id = ?').bind(id, uid),
+        db.prepare('UPDATE aves SET mae_id = NULL WHERE mae_id = ? AND usuario_id = ?').bind(id, uid),
+        db.prepare('UPDATE aves SET pai_id = NULL WHERE pai_id = ? AND usuario_id = ?').bind(id, uid)
+      ]);
       return r.meta.changes ? json({ message: 'Ave excluída com sucesso!' }) : erro('Ave não encontrada', 404);
     }
   }
@@ -461,7 +480,8 @@ async function rotear(request, env, params) {
     if (metodo === 'GET') {
       const { results } = await db.prepare(`SELECT n.*,
                                               m.nome as mae_nome, m.especie as mae_especie, m.cor as mae_cor,
-                                              p.nome as pai_nome, p.especie as pai_especie, p.cor as pai_cor
+                                              p.nome as pai_nome, p.especie as pai_especie, p.cor as pai_cor,
+                                              (SELECT COUNT(*) FROM aves f WHERE f.nascimento_id = n.id AND f.usuario_id = n.usuario_id) as cadastrados
                                             FROM nascimentos n
                                             LEFT JOIN aves m ON n.mae_id = m.id AND m.usuario_id = n.usuario_id
                                             LEFT JOIN aves p ON n.pai_id = p.id AND p.usuario_id = n.usuario_id
@@ -480,7 +500,10 @@ async function rotear(request, env, params) {
       return json({ id: r.meta.last_row_id, message: 'Nascimento registrado!' });
     }
     if (metodo === 'DELETE') {
-      const r = await db.prepare('DELETE FROM nascimentos WHERE id = ? AND usuario_id = ?').bind(id, uid).run();
+      const [r] = await db.batch([
+        db.prepare('DELETE FROM nascimentos WHERE id = ? AND usuario_id = ?').bind(id, uid),
+        db.prepare('UPDATE aves SET nascimento_id = NULL WHERE nascimento_id = ? AND usuario_id = ?').bind(id, uid)
+      ]);
       return r.meta.changes ? json({ message: 'Nascimento excluído!' }) : erro('Nascimento não encontrado', 404);
     }
   }
@@ -537,11 +560,13 @@ async function rotear(request, env, params) {
     // Cancelar: a ave volta para o plantel e a venda fica no histórico como cancelada
     if (metodo === 'POST' && extra === 'cancelar') {
       if (venda.status_pagamento === 'cancelada') return erro('Esta venda já foi cancelada', 400);
-      await db.batch([
+      const [, ave] = await db.batch([
         db.prepare("UPDATE vendas SET status_pagamento = 'cancelada' WHERE id = ? AND usuario_id = ?").bind(venda.id, uid),
         db.prepare("UPDATE aves SET status = 'plantel', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(venda.ave_id, uid)
       ]);
-      return json({ message: `Venda cancelada. ${venda.ave_nome} voltou para o plantel.` });
+      return json({ message: ave.meta.changes
+        ? `Venda cancelada. ${venda.ave_nome} voltou para o plantel.`
+        : `Venda cancelada. ${venda.ave_nome} não volta para o plantel porque foi excluída do cadastro.` });
     }
 
     // Excluir o registro. Se a venda não estava cancelada, a ave volta para o plantel,
@@ -554,8 +579,9 @@ async function rotear(request, env, params) {
           ? db.prepare("DELETE FROM aves WHERE id = ? AND usuario_id = ? AND status = 'vendida'").bind(venda.ave_id, uid)
           : db.prepare("UPDATE aves SET status = 'plantel', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(venda.ave_id, uid));
       }
-      await db.batch(comandos);
-      if (venda.status_pagamento === 'cancelada') return json({ message: 'Venda excluída!' });
+      const [, ave] = await db.batch(comandos);
+      if (!ave) return json({ message: 'Venda excluída!' });
+      if (!ave.meta.changes) return json({ message: `Venda excluída. ${venda.ave_nome} já não estava no cadastro de aves.` });
       return json({ message: excluirAve ? `Venda e ave ${venda.ave_nome} excluídas!` : `Venda excluída. ${venda.ave_nome} voltou para o plantel.` });
     }
   }
@@ -686,24 +712,38 @@ async function rotear(request, env, params) {
     const { aves, vacinas, nascimentos, vendas } = corpo;
     if (!Array.isArray(aves)) return erro('Dados inválidos', 400);
 
-    // As aves recebem ids novos (os ids são do banco inteiro, compartilhado entre usuários);
-    // vacinas e nascimentos são religados às aves pelos ids novos.
-    const { proximo } = await db.prepare("SELECT COALESCE(MAX(id), 0) + 1 as proximo FROM aves").first();
+    // As aves e os nascimentos recebem ids novos (os ids são do banco inteiro, compartilhado entre usuários);
+    // vacinas, nascimentos, vendas e a família das aves são religados pelos ids novos.
+    const listaNasc = Array.isArray(nascimentos) ? nascimentos : [];
+    const [{ proximo }, { proximoNasc }] = await Promise.all([
+      db.prepare("SELECT COALESCE(MAX(id), 0) + 1 as proximo FROM aves").first(),
+      db.prepare("SELECT COALESCE(MAX(id), 0) + 1 as proximoNasc FROM nascimentos").first()
+    ]);
     const novoId = new Map(aves.map((a, i) => [a.id, proximo + i]));
     const mapear = (antigo) => (vazio(antigo) ? null : novoId.get(antigo) ?? null);
+    const novoNasc = new Map(listaNasc.map((n, i) => [n.id, proximoNasc + i]));
+    // Backups antigos só têm a idade: estima a data de nascimento a partir dela
+    const nascimentoDe = (a) => {
+      if (dataValida(a.data_nascimento)) return a.data_nascimento;
+      const d = new Date(Date.now() - (Number(a.idade) || 0) * 365.25 * 86400000);
+      return d.toISOString().slice(0, 10);
+    };
 
     const comandos = [
       db.prepare('DELETE FROM vacinas WHERE usuario_id = ?').bind(uid),
       db.prepare('DELETE FROM nascimentos WHERE usuario_id = ?').bind(uid),
       db.prepare('DELETE FROM vendas WHERE usuario_id = ?').bind(uid),
       db.prepare('DELETE FROM aves WHERE usuario_id = ?').bind(uid),
-      ...aves.map((a, i) => db.prepare('INSERT INTO aves (id, usuario_id, nome, especie, cor, sexo, anilha, registro, idade, status, preco) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(proximo + i, uid, a.nome, a.especie, a.cor || '', a.sexo, a.anilha || '', a.registro || '', Number(a.idade) || 0,
+      ...aves.map((a, i) => db.prepare(`INSERT INTO aves (id, usuario_id, nome, especie, cor, sexo, anilha, registro, idade, data_nascimento,
+                                                          mae_id, pai_id, nascimento_id, status, preco)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(proximo + i, uid, a.nome, a.especie, a.cor || '', a.sexo, a.anilha || '', a.registro || '', idadeEmAnos(nascimentoDe(a)), nascimentoDe(a),
+              mapear(a.mae_id), mapear(a.pai_id), vazio(a.nascimento_id) ? null : novoNasc.get(a.nascimento_id) ?? null,
               a.status === 'vendida' ? 'vendida' : 'plantel', precoOuNulo(a.preco))),
       ...(Array.isArray(vacinas) ? vacinas : []).map(v => db.prepare('INSERT INTO vacinas (usuario_id, ave_id, nome_vacina, data_aplicacao, proxima_dose, observacoes) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(uid, mapear(v.ave_id), v.nome_vacina, v.data_aplicacao, v.proxima_dose || '', v.observacoes || '')),
-      ...(Array.isArray(nascimentos) ? nascimentos : []).map(n => db.prepare('INSERT INTO nascimentos (usuario_id, mae_id, pai_id, data_nascimento, quantidade, observacoes) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(uid, mapear(n.mae_id), mapear(n.pai_id), n.data_nascimento, n.quantidade || 1, n.observacoes || '')),
+      ...listaNasc.map((n, i) => db.prepare('INSERT INTO nascimentos (id, usuario_id, mae_id, pai_id, data_nascimento, quantidade, observacoes) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(proximoNasc + i, uid, mapear(n.mae_id), mapear(n.pai_id), n.data_nascimento, n.quantidade || 1, n.observacoes || '')),
       ...(Array.isArray(vendas) ? vendas : []).map(v => db.prepare(`INSERT INTO vendas (usuario_id, ave_id, ave_nome, ave_especie, ave_cor, comprador_nome,
                                        comprador_telefone, valor, forma_pagamento, status_pagamento, data_venda, data_pagamento, observacoes)
                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)

@@ -31,10 +31,11 @@ Trocar a senha **nunca apaga** aves, vacinas, nascimentos ou backups.
   - **Excluir canceladas** apaga de uma vez todas as vendas canceladas do histórico.
 - **Pix**: em **Vendas → Meu Pix**, cadastre sua chave. Cada venda por Pix gera o QR Code e o "Pix copia e cola" com o valor, que dá para enviar pelo WhatsApp. O dinheiro cai direto na sua conta, sem taxa. A confirmação é manual: confira no app do banco e clique em **Recebi**. Dinheiro e cartão (maquininha) são só registrados.
 
-- **Aves**: cadastro com nome, espécie, cor/mutação, sexo, anilha, registro, idade e preço de venda (opcional). Filtro por situação (no plantel, vendidas ou todas), espécie e sexo e resumo do plantel. Aves vendidas também podem ser editadas ou excluídas (a venda continua no histórico).
+- **Aves**: cadastro com nome, espécie, cor/mutação, sexo, anilha, registro, data de nascimento (a idade é calculada sozinha), mãe, pai e preço de venda (opcional). Filtro por situação (no plantel, vendidas ou todas), espécie e sexo e resumo do plantel. Aves vendidas também podem ser editadas ou excluídas (a venda continua no histórico).
 - **Espécies**: na aba Aves, dá para excluir uma espécie da lista (só se não houver aves dela no plantel), restaurar uma espécie excluída e adicionar espécies novas. Cada usuário tem a própria lista.
 - **Vacinas**: registro de vacinas e medicamentos por ave, com data da próxima dose.
-- **Nascimentos**: registro de filhotes por casal (mãe e pai).
+- **Nascimentos**: registro de filhotes por casal (mãe e pai). O botão **Cadastrar filhote** coloca cada filhote no plantel já com mãe, pai, espécie e data de nascimento.
+- **Família**: o botão **Família** de cada ave mostra mãe, pai, avós, irmãos e filhotes. Ao registrar um casal ou um filhote, o app avisa se mãe e pai são parentes (pais e filhos, irmãos, meio-irmãos, avós e netos ou primos).
 - **Backup**: backup automático diário no banco, backup manual, exportação e importação em JSON.
 
 As espécies padrão e as cores sugeridas para cada uma ficam no início de `public/app.js` (objeto `ESPECIES`). As espécies excluídas ou adicionadas por cada usuário ficam na tabela `especies_usuario`.

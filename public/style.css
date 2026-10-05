@@ -420,6 +420,16 @@ td.botoes .btn { margin-left: 4px; }
 .barras li:hover .barra { background: var(--floresta); }
 .barra-valor { text-align: right; white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
 .barra-valor small { display: block; color: var(--suave); font-size: .74rem; font-weight: 400; }
+.linha-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 2px solid var(--borda);
+  font-weight: 800;
+  color: var(--floresta);
+}
 
 /* Colunas por mês */
 .colunas {
@@ -600,4 +610,11 @@ textarea {
 #form-especie input { flex: 1 1 200px; }
 .situacao.vendida { color: var(--suave); background: #eef2f0; }
 .escolhas { flex-direction: column; align-items: stretch; }
+
+/* Família da ave */
+.familia { display: grid; gap: 12px; margin-top: 8px; }
+.familia h3 { margin: 0 0 4px; font-size: .95rem; color: var(--floresta); }
+.familia ul { margin: 0; padding-left: 18px; }
+.familia li { margin: 2px 0; }
+.filhotes-contagem { display: block; color: var(--suave); font-size: .8rem; }
 .escolhas .btn { text-align: left; }

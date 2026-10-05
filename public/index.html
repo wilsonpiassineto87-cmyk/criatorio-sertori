@@ -169,6 +169,7 @@
         <h2 id="titulo-form-ave">Cadastrar ave</h2>
         <form id="form-ave">
           <input type="hidden" id="ave-id">
+          <input type="hidden" id="ave-ninhada">
           <div class="grade">
             <label>Nome *
               <input type="text" id="ave-nome" required>
@@ -194,8 +195,14 @@
             <label>Registro
               <input type="text" id="ave-registro">
             </label>
-            <label>Idade (anos) *
-              <input type="number" id="ave-idade" min="0" step="0.1" required>
+            <label>Data de nascimento *
+              <input type="date" id="ave-nascimento" required>
+            </label>
+            <label>Mãe
+              <select id="ave-mae"></select>
+            </label>
+            <label>Pai
+              <select id="ave-pai"></select>
             </label>
             <label>Preço de venda (R$)
               <input type="number" id="ave-preco" min="0" step="0.01" placeholder="Opcional">
@@ -314,6 +321,7 @@
 
       <div class="cartao">
         <h2>Histórico</h2>
+        <p class="dica">Use <strong>Cadastrar filhote</strong> para colocar cada filhote no plantel, já com mãe, pai e data de nascimento.</p>
         <div class="tabela-rolagem">
           <table>
             <thead>
@@ -516,6 +524,15 @@
         <button class="btn" id="btn-copiar-segredo">Copiar</button>
         <button class="btn primario" id="btn-fechar-segredo">Já anotei</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Janela de informações (ex.: família da ave) -->
+  <div class="sobreposicao" id="caixa-info" hidden>
+    <div class="cartao caixa-segredo" role="dialog" aria-modal="true" aria-labelledby="info-titulo">
+      <h2 id="info-titulo"></h2>
+      <div id="info-conteudo"></div>
+      <div class="acoes"><button type="button" class="btn primario" id="btn-fechar-info">Fechar</button></div>
     </div>
   </div>
 
