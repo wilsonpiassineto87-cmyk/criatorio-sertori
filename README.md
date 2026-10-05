@@ -27,14 +27,17 @@ Trocar a senha **nunca apaga** aves, vacinas, nascimentos ou backups.
 
 - **Painel**: resumo do criatório: aves no plantel, filhotes do ano, vendido no mês e no ano, valor a receber, plantel à venda, aves por espécie, vacinas atrasadas e dos próximos 30 dias, faturamento dos últimos 12 meses, vendas por forma de pagamento e por espécie, e as últimas vendas.
 - **Vendas**: registro da venda (ave, comprador, telefone, valor, forma de pagamento, situação). A ave sai do plantel; se a venda for cancelada, ela volta. Situações: aguardando pagamento, pago ou cancelada.
+  - **Excluir** uma venda pergunta o que fazer com a ave: devolver ao plantel ou excluir a ave junto. Venda cancelada é só apagada do histórico.
+  - **Excluir canceladas** apaga de uma vez todas as vendas canceladas do histórico.
 - **Pix**: em **Vendas → Meu Pix**, cadastre sua chave. Cada venda por Pix gera o QR Code e o "Pix copia e cola" com o valor, que dá para enviar pelo WhatsApp. O dinheiro cai direto na sua conta, sem taxa. A confirmação é manual: confira no app do banco e clique em **Recebi**. Dinheiro e cartão (maquininha) são só registrados.
 
-- **Aves**: cadastro com nome, espécie, cor/mutação, sexo, anilha, registro, idade e preço de venda (opcional). Filtro por espécie e sexo e resumo do plantel.
+- **Aves**: cadastro com nome, espécie, cor/mutação, sexo, anilha, registro, idade e preço de venda (opcional). Filtro por situação (no plantel, vendidas ou todas), espécie e sexo e resumo do plantel. Aves vendidas também podem ser editadas ou excluídas (a venda continua no histórico).
+- **Espécies**: na aba Aves, dá para excluir uma espécie da lista (só se não houver aves dela no plantel), restaurar uma espécie excluída e adicionar espécies novas. Cada usuário tem a própria lista.
 - **Vacinas**: registro de vacinas e medicamentos por ave, com data da próxima dose.
 - **Nascimentos**: registro de filhotes por casal (mãe e pai).
 - **Backup**: backup automático diário no banco, backup manual, exportação e importação em JSON.
 
-As cores sugeridas para cada espécie ficam no início de `public/app.js` (objeto `ESPECIES`).
+As espécies padrão e as cores sugeridas para cada uma ficam no início de `public/app.js` (objeto `ESPECIES`). As espécies excluídas ou adicionadas por cada usuário ficam na tabela `especies_usuario`.
 
 ## Como funciona
 

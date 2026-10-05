@@ -115,3 +115,11 @@ CREATE TABLE IF NOT EXISTS tentativas (
   janela_inicio DATETIME NOT NULL,
   bloqueado_ate DATETIME
 );
+
+-- Espécies de cada usuário: oculta = 1 tira uma espécie padrão da lista; oculta = 0 é uma espécie nova criada pelo usuário
+CREATE TABLE IF NOT EXISTS especies_usuario (
+  usuario_id INTEGER NOT NULL,
+  especie TEXT NOT NULL,
+  oculta INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (usuario_id, especie)
+);

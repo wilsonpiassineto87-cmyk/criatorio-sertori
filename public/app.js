@@ -100,11 +100,71 @@ document.querySelectorAll('.aba').forEach(botao => {
 // ==================== AVES ====================
 let aves = [];
 
-function preencherEspecies() {
-  const opcoes = Object.keys(ESPECIES).map(e => `<option>${e}</option>`).join('');
-  $('ave-especie').innerHTML = `<option value="">Selecione</option>${opcoes}`;
-  $('filtro-especie').innerHTML = `<option value="">Todas as espécies</option>${opcoes}`;
+// Mudanças do usuário na lista de espécies (guardadas no banco): padrão excluídas e espécies novas
+let especiesConfig = { ocultas: [], extras: [] };
+
+function listaEspecies() {
+  return [...Object.keys(ESPECIES).filter(e => !especiesConfig.ocultas.includes(e)), ...especiesConfig.extras];
 }
+
+function preencherEspecies() {
+  const opcoes = listaEspecies().map(e => `<option>${escapar(e)}</option>`).join('');
+  for (const [campo, primeira] of [['ave-especie', 'Selecione'], ['filtro-especie', 'Todas as espécies']]) {
+    const atual = $(campo).value;
+    $(campo).innerHTML = `<option value="">${primeira}</option>${opcoes}`;
+    garantirEspecie(campo, atual);
+  }
+}
+
+// Mantém selecionada uma espécie que saiu da lista (ex.: ao editar uma ave antiga)
+function garantirEspecie(campo, especie) {
+  if (!especie) return;
+  if (![...$(campo).options].some(o => o.value === especie)) $(campo).add(new Option(especie, especie));
+  $(campo).value = especie;
+}
+
+async function carregarEspecies() {
+  especiesConfig = await api('/api/especies');
+  preencherEspecies();
+  $('lista-especies').innerHTML = listaEspecies().map(e => `
+    <span class="especie-chip">${escapar(e)}${ESPECIES[e] ? '' : ' <small>(nova)</small>'}
+      <button type="button" data-acao="excluirEspecie" data-valor="${escapar(e)}" title="Excluir ${escapar(e)}" aria-label="Excluir ${escapar(e)}">×</button>
+    </span>`).join('') || '<p class="vazio">Nenhuma espécie na lista</p>';
+  $('especies-excluidas').innerHTML = especiesConfig.ocultas.length ? `
+    <p class="dica">Espécies excluídas: ${especiesConfig.ocultas.map(e =>
+      `${escapar(e)} <button type="button" class="link" data-acao="restaurarEspecie" data-valor="${escapar(e)}">restaurar</button>`).join(' · ')}</p>` : '';
+}
+
+const excluirEspecie = async (_, nome) => {
+  if (!confirm(`Excluir a espécie ${nome} da lista?`)) return;
+  try {
+    const r = await api('/api/especies?' + new URLSearchParams({ nome }), { method: 'DELETE' });
+    aviso(r.message);
+    await carregarEspecies();
+    carregarAves();
+  } catch (e) { aviso(e.message, true); }
+};
+
+const restaurarEspecie = async (_, nome) => {
+  try {
+    const r = await api('/api/especies', { method: 'POST', body: { nome } });
+    aviso(r.message);
+    await carregarEspecies();
+  } catch (e) { aviso(e.message, true); }
+};
+
+$('form-especie').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const nome = $('especie-nome').value.trim().replace(/\s+/g, ' ');
+  const existente = listaEspecies().find(e => e.toLowerCase() === nome.toLowerCase());
+  if (existente) return aviso(`${existente} já está na lista`, true);
+  try {
+    const r = await api('/api/especies', { method: 'POST', body: { nome } });
+    aviso(r.message);
+    $('form-especie').reset();
+    await carregarEspecies();
+  } catch (e) { aviso(e.message, true); }
+});
 
 function atualizarListaCores() {
   const cores = Object.keys(ESPECIES[$('ave-especie').value] || {});
@@ -120,15 +180,19 @@ function chipCor(especie, cor) {
   return `<span class="cor-chip"><span class="cor-bolinha" style="background:${corHex(especie, cor)}"></span>${escapar(cor)}</span>`;
 }
 
+const TITULOS_LISTA_AVES = { plantel: 'Plantel', vendida: 'Aves vendidas', todas: 'Todas as aves' };
+
 async function carregarAves() {
-  const params = new URLSearchParams();
+  const situacao = $('filtro-situacao').value;
+  const params = new URLSearchParams({ status: situacao });
+  $('titulo-lista-aves').textContent = TITULOS_LISTA_AVES[situacao];
   if ($('filtro-especie').value) params.set('especie', $('filtro-especie').value);
   if ($('filtro-sexo').value) params.set('sexo', $('filtro-sexo').value);
   const lista = await api('/api/aves?' + params);
 
   $('tabela-aves').innerHTML = lista.length ? lista.map(a => `
     <tr>
-      <td>${escapar(a.nome)}</td>
+      <td>${escapar(a.nome)}${a.status === 'vendida' ? ' <span class="situacao vendida">Vendida</span>' : ''}</td>
       <td>${escapar(a.especie)}</td>
       <td>${chipCor(a.especie, a.cor)}</td>
       <td>${escapar(a.sexo)}</td>
@@ -137,11 +201,11 @@ async function carregarAves() {
       <td>${a.idade} ${a.idade == 1 ? 'ano' : 'anos'}</td>
       <td>${a.preco != null ? dinheiro(a.preco) : '-'}</td>
       <td class="botoes">
-        <button class="btn pequeno" data-acao="venderAve" data-id="${a.id}">Vender</button>
+        ${a.status === 'vendida' ? '' : `<button class="btn pequeno" data-acao="venderAve" data-id="${a.id}">Vender</button>`}
         <button class="btn pequeno" data-acao="editarAve" data-id="${a.id}">Editar</button>
-        <button class="btn pequeno perigo" data-acao="excluirAve" data-id="${a.id}">Excluir</button>
+        <button class="btn pequeno perigo" data-acao="excluirAve" data-id="${a.id}" data-valor="${escapar(a.status)}">Excluir</button>
       </td>
-    </tr>`).join('') : '<tr><td colspan="9" class="vazio">Nenhuma ave no plantel</td></tr>';
+    </tr>`).join('') : `<tr><td colspan="9" class="vazio">${situacao === 'vendida' ? 'Nenhuma ave vendida' : situacao === 'todas' ? 'Nenhuma ave cadastrada' : 'Nenhuma ave no plantel'}</td></tr>`;
 }
 
 async function carregarTodasAves() {
@@ -184,7 +248,7 @@ const editarAve = async (id) => {
   const a = await api('/api/aves/' + id);
   $('ave-id').value = a.id;
   $('ave-nome').value = a.nome;
-  $('ave-especie').value = a.especie;
+  garantirEspecie('ave-especie', a.especie);
   atualizarListaCores();
   $('ave-cor').value = a.cor;
   $('ave-sexo').value = a.sexo;
@@ -197,8 +261,11 @@ const editarAve = async (id) => {
   $('form-ave').scrollIntoView({ behavior: 'smooth' });
 };
 
-const excluirAve = async (id) => {
-  if (!confirm('Excluir esta ave?')) return;
+const excluirAve = async (id, status) => {
+  const pergunta = status === 'vendida'
+    ? 'Excluir esta ave vendida? O registro da venda continua no histórico de vendas.'
+    : 'Excluir esta ave?';
+  if (!confirm(pergunta)) return;
   try {
     const r = await api('/api/aves/' + id, { method: 'DELETE' });
     aviso(r.message);
@@ -230,6 +297,7 @@ $('form-ave').addEventListener('submit', async (ev) => {
 });
 
 $('filtro-especie').addEventListener('change', carregarAves);
+$('filtro-situacao').addEventListener('change', carregarAves);
 $('filtro-sexo').addEventListener('change', carregarAves);
 
 // ==================== VACINAS ====================
@@ -543,16 +611,65 @@ const cancelarVenda = async (id) => {
   } catch (e) { aviso(e.message, true); }
 };
 
+// Janela com botões de escolha. Devolve o valor da opção clicada, ou null se a pessoa desistir.
+function escolher(titulo, texto, opcoes) {
+  const caixa = $('caixa-escolha');
+  $('escolha-titulo').textContent = titulo;
+  $('escolha-texto').textContent = texto;
+  $('escolha-botoes').innerHTML = opcoes.map((o, i) =>
+    `<button type="button" class="btn ${o.classe || ''}" data-escolha="${i}">${escapar(o.texto)}</button>`).join('') +
+    '<button type="button" class="link" data-escolha="-1">Voltar</button>';
+  caixa.hidden = false;
+  $('escolha-botoes').querySelector('button').focus();
+  return new Promise(resolve => {
+    const fechar = (valor) => {
+      caixa.hidden = true;
+      caixa.removeEventListener('click', clique);
+      document.removeEventListener('keydown', tecla);
+      resolve(valor);
+    };
+    const clique = (ev) => {
+      const botao = ev.target.closest('[data-escolha]');
+      const i = botao ? Number(botao.dataset.escolha) : -1;
+      if (botao || ev.target === caixa) fechar(i >= 0 ? opcoes[i].valor : null);
+    };
+    const tecla = (ev) => { if (ev.key === 'Escape') fechar(null); };
+    caixa.addEventListener('click', clique);
+    document.addEventListener('keydown', tecla);
+  });
+}
+
 const excluirVenda = async (id) => {
   const v = vendas.find(x => x.id === id);
-  const extra = v && v.status_pagamento !== 'cancelada' ? ' A ave volta para o plantel.' : '';
-  if (!confirm('Excluir este registro de venda?' + extra)) return;
+  if (!v) return;
+  let destinoAve = '';
+  if (v.status_pagamento === 'cancelada') {
+    if (!confirm('Excluir este registro de venda cancelada?')) return;
+  } else {
+    destinoAve = await escolher('Excluir venda',
+      `Venda de ${v.ave_nome} (${v.ave_especie}) por ${dinheiro(v.valor)}. O que fazer com a ave?`, [
+        { texto: 'Excluir só a venda e devolver a ave ao plantel', valor: 'plantel' },
+        { texto: 'Excluir a venda e a ave', valor: 'excluir', classe: 'perigo' }
+      ]);
+    if (!destinoAve) return;
+  }
   try {
-    const r = await api('/api/vendas/' + id, { method: 'DELETE' });
+    const r = await api('/api/vendas/' + id + (destinoAve === 'excluir' ? '?ave=excluir' : ''), { method: 'DELETE' });
     aviso(r.message);
     await depoisDeVenda();
   } catch (e) { aviso(e.message, true); }
 };
+
+$('btn-excluir-canceladas').addEventListener('click', async () => {
+  const total = vendas.filter(v => v.status_pagamento === 'cancelada').length;
+  if (!total) return aviso('Nenhuma venda cancelada para excluir');
+  if (!confirm(`Excluir ${total === 1 ? 'a venda cancelada' : `as ${total} vendas canceladas`} do histórico?`)) return;
+  try {
+    const r = await api('/api/vendas?status=cancelada', { method: 'DELETE' });
+    aviso(r.message);
+    await depoisDeVenda();
+  } catch (e) { aviso(e.message, true); }
+});
 
 // ==================== PIX ====================
 async function carregarPix() {
@@ -900,13 +1017,13 @@ $('form-redefinir').addEventListener('submit', async (ev) => {
 
 // ==================== INÍCIO ====================
 function atualizarTudo() {
-  return Promise.all([carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos(),
+  return Promise.all([carregarEspecies(), carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos(),
                       carregarPainel(), carregarVendas(), carregarPix()])
     .catch(e => aviso(e.message, true));
 }
 
 // Botões das tabelas: um só controlador, sem JavaScript dentro do HTML
-const ACOES = { editarAve, excluirAve, excluirVacina, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
+const ACOES = { editarAve, excluirAve, excluirEspecie, restaurarEspecie, excluirVacina, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
 document.addEventListener('click', (ev) => {
   const botao = ev.target.closest('[data-acao]');
   if (!botao || !ACOES[botao.dataset.acao]) return;

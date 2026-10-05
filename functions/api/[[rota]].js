@@ -367,6 +367,7 @@ async function rotear(request, env, params) {
         db.prepare('DELETE FROM backups WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM vendas WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM config_pix WHERE usuario_id = ?').bind(alvo),
+        db.prepare('DELETE FROM especies_usuario WHERE usuario_id = ?').bind(alvo),
         db.prepare('DELETE FROM usuarios WHERE id = ?').bind(alvo)
       ]);
       return apagado.meta.changes ? json({ message: 'Usuário e seus dados excluídos!' }) : erro('Usuário não encontrado', 404);
@@ -513,6 +514,14 @@ async function rotear(request, env, params) {
       return json({ id: venda.meta.last_row_id, message: `Venda de ${ave.nome} registrada!` });
     }
 
+    // Excluir de uma vez todas as vendas canceladas
+    if (metodo === 'DELETE' && !id) {
+      if (url.searchParams.get('status') !== 'cancelada') return erro('Só dá para excluir de uma vez as vendas canceladas', 400);
+      const r = await db.prepare("DELETE FROM vendas WHERE usuario_id = ? AND status_pagamento = 'cancelada'").bind(uid).run();
+      const n = r.meta.changes;
+      return json({ message: n ? `${n} ${n === 1 ? 'venda cancelada excluída' : 'vendas canceladas excluídas'}!` : 'Nenhuma venda cancelada para excluir' });
+    }
+
     const venda = id ? await db.prepare('SELECT * FROM vendas WHERE id = ? AND usuario_id = ?').bind(Number(id), uid).first() : null;
     if (id && !venda) return erro('Venda não encontrada', 404);
 
@@ -535,14 +544,55 @@ async function rotear(request, env, params) {
       return json({ message: `Venda cancelada. ${venda.ave_nome} voltou para o plantel.` });
     }
 
-    // Excluir o registro: se a venda não estava cancelada, a ave volta para o plantel
+    // Excluir o registro. Se a venda não estava cancelada, a ave volta para o plantel,
+    // ou, com ?ave=excluir, a ave vendida é excluída junto com a venda.
     if (metodo === 'DELETE') {
+      const excluirAve = url.searchParams.get('ave') === 'excluir';
       const comandos = [db.prepare('DELETE FROM vendas WHERE id = ? AND usuario_id = ?').bind(venda.id, uid)];
-      if (venda.status_pagamento !== 'cancelada') {
-        comandos.push(db.prepare("UPDATE aves SET status = 'plantel', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(venda.ave_id, uid));
+      if (venda.status_pagamento !== 'cancelada' && !vazio(venda.ave_id)) {
+        comandos.push(excluirAve
+          ? db.prepare("DELETE FROM aves WHERE id = ? AND usuario_id = ? AND status = 'vendida'").bind(venda.ave_id, uid)
+          : db.prepare("UPDATE aves SET status = 'plantel', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND usuario_id = ?").bind(venda.ave_id, uid));
       }
       await db.batch(comandos);
-      return json({ message: 'Venda excluída!' });
+      if (venda.status_pagamento === 'cancelada') return json({ message: 'Venda excluída!' });
+      return json({ message: excluirAve ? `Venda e ave ${venda.ave_nome} excluídas!` : `Venda excluída. ${venda.ave_nome} voltou para o plantel.` });
+    }
+  }
+
+  // ==================== ESPÉCIES ====================
+  // A lista padrão fica no app (public/app.js). Aqui ficam só as mudanças de cada usuário:
+  // espécies padrão excluídas (oculta = 1) e espécies novas (oculta = 0).
+  if (recurso === 'especies') {
+    if (metodo === 'GET') {
+      const { results } = await db.prepare('SELECT especie, oculta FROM especies_usuario WHERE usuario_id = ? ORDER BY especie').bind(uid).all();
+      return json({
+        ocultas: results.filter(e => e.oculta).map(e => e.especie),
+        extras: results.filter(e => !e.oculta).map(e => e.especie)
+      });
+    }
+    const nome = String((metodo === 'POST' ? corpo.nome : url.searchParams.get('nome')) || '').trim().replace(/\s+/g, ' ');
+    if (!nome || nome.length > 60) return erro('Informe o nome da espécie', 400);
+    const atual = await db.prepare('SELECT oculta FROM especies_usuario WHERE usuario_id = ? AND especie = ?').bind(uid, nome).first();
+
+    // Adicionar uma espécie nova ou trazer de volta uma espécie padrão excluída
+    if (metodo === 'POST') {
+      if (atual && !atual.oculta) return erro('Essa espécie já está na lista', 409);
+      await db.prepare(atual
+        ? 'DELETE FROM especies_usuario WHERE usuario_id = ? AND especie = ?'
+        : 'INSERT INTO especies_usuario (usuario_id, especie, oculta) VALUES (?, ?, 0)').bind(uid, nome).run();
+      return json({ message: `Espécie ${nome} ${atual ? 'restaurada' : 'adicionada'}!` });
+    }
+
+    // Excluir: só se não houver aves dessa espécie no plantel
+    if (metodo === 'DELETE') {
+      if (atual && atual.oculta) return erro('Essa espécie já foi excluída', 404);
+      const { total } = await db.prepare("SELECT COUNT(*) as total FROM aves WHERE usuario_id = ? AND especie = ? AND status = 'plantel'").bind(uid, nome).first();
+      if (total) return erro(`Há ${total} ${total === 1 ? 'ave' : 'aves'} de ${nome} no plantel. Exclua ou mude a espécie delas antes.`, 400);
+      await db.prepare(atual
+        ? 'DELETE FROM especies_usuario WHERE usuario_id = ? AND especie = ?'
+        : 'INSERT INTO especies_usuario (usuario_id, especie, oculta) VALUES (?, ?, 1)').bind(uid, nome).run();
+      return json({ message: `Espécie ${nome} excluída da lista!` });
     }
   }
 

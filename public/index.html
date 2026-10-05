@@ -208,7 +208,12 @@
 
       <div class="cartao">
         <div class="filtros">
-          <h2>Plantel</h2>
+          <h2 id="titulo-lista-aves">Plantel</h2>
+          <select id="filtro-situacao" aria-label="Situação da ave">
+            <option value="plantel">No plantel</option>
+            <option value="vendida">Vendidas</option>
+            <option value="todas">Todas as aves</option>
+          </select>
           <select id="filtro-especie"><option value="">Todas as espécies</option></select>
           <select id="filtro-sexo">
             <option value="">Todos os sexos</option>
@@ -225,6 +230,18 @@
             <tbody id="tabela-aves"></tbody>
           </table>
         </div>
+      </div>
+
+      <div class="cartao">
+        <h2>Espécies</h2>
+        <p class="dica">Estas são as espécies que aparecem no cadastro de aves. Clique no × para excluir uma espécie da lista
+          (só dá para excluir se não houver aves dela no plantel). As aves já vendidas continuam com a espécie no histórico.</p>
+        <div class="lista-especies" id="lista-especies"></div>
+        <form id="form-especie" class="filtros">
+          <input type="text" id="especie-nome" maxlength="60" placeholder="Nova espécie (ex.: Canário)" required>
+          <button type="submit" class="btn">Adicionar espécie</button>
+        </form>
+        <div id="especies-excluidas"></div>
       </div>
     </section>
 
@@ -359,6 +376,7 @@
             <option value="pago">Pagas</option>
             <option value="cancelada">Canceladas</option>
           </select>
+          <button type="button" class="btn pequeno perigo" id="btn-excluir-canceladas">Excluir canceladas</button>
         </div>
         <div class="tabela-rolagem">
           <table>
@@ -496,6 +514,15 @@
         <button class="btn" id="btn-copiar-segredo">Copiar</button>
         <button class="btn primario" id="btn-fechar-segredo">Já anotei</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Janela de escolha (ex.: o que fazer com a ave ao excluir uma venda) -->
+  <div class="sobreposicao" id="caixa-escolha" hidden>
+    <div class="cartao caixa-segredo" role="dialog" aria-modal="true" aria-labelledby="escolha-titulo">
+      <h2 id="escolha-titulo"></h2>
+      <p class="dica" id="escolha-texto"></p>
+      <div class="acoes escolhas" id="escolha-botoes"></div>
     </div>
   </div>
 
