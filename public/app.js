@@ -33,9 +33,9 @@ const ESPECIES = {
     'Normal': '#b58f7c', 'Rosa': '#e7a3b4', 'Rubino': '#e58aa0', 'Opalino Rosa': '#ee9cbf',
     'Lutino': '#f4e2a0', 'Canela': '#c09a7e'
   },
-  'Kakariki': {
-    'Verde (ancestral)': '#45a547', 'Lutino': '#f3dc5a', 'Canela': '#a9b56b', 'Arlequim': '#b7d264',
-    'Pastel': '#b5d99a', 'Cara Amarela': '#c6d84a'
+  'Forpus': {
+    'Verde (ancestral)': '#4fae4c', 'Azul': '#5a9fd6', 'Turquesa': '#35b3a3', 'Amarelo (Lutino)': '#f4dc4a',
+    'Branco (Albino)': '#f6f6f1', 'Cinza': '#8e959b', 'Fallow': '#b9c27a', 'Pastel': '#a9d38c'
   }
 };
 
