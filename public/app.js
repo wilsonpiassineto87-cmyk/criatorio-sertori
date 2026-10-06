@@ -241,8 +241,6 @@ async function carregarTodasAves() {
     $(campo).innerHTML = opcoesPais(sexo);
     $(campo).value = atual;
   }
-  $('vacina-ave').innerHTML = '<option value="">Selecione</option>' +
-    aves.map(a => `<option value="${a.id}">${rotulo(a)}</option>`).join('');
   $('nasc-mae').innerHTML = '<option value="">—</option>' +
     aves.filter(a => a.sexo === 'Fêmea').map(a => `<option value="${a.id}">${rotulo(a)}</option>`).join('');
   $('nasc-pai').innerHTML = '<option value="">—</option>' +
@@ -394,49 +392,6 @@ const verFamilia = (id) => {
 $('filtro-especie').addEventListener('change', carregarAves);
 $('filtro-situacao').addEventListener('change', carregarAves);
 $('filtro-sexo').addEventListener('change', carregarAves);
-
-// ==================== VACINAS ====================
-async function carregarVacinas() {
-  const lista = await api('/api/vacinas');
-  $('tabela-vacinas').innerHTML = lista.length ? lista.map(v => `
-    <tr>
-      <td>${escapar(v.ave_nome) || '(ave removida)'}</td>
-      <td>${v.especie ? `${escapar(v.especie)} · ${chipCor(v.especie, v.cor)}` : '-'}</td>
-      <td>${escapar(v.nome_vacina)}</td>
-      <td>${formatarData(v.data_aplicacao)}</td>
-      <td>${formatarData(v.proxima_dose)}</td>
-      <td>${escapar(v.observacoes) || '-'}</td>
-      <td class="botoes"><button class="btn pequeno perigo" data-acao="excluirVacina" data-id="${v.id}">Excluir</button></td>
-    </tr>`).join('') : '<tr><td colspan="7" class="vazio">Nenhuma vacina registrada</td></tr>';
-}
-
-const excluirVacina = async (id) => {
-  if (!confirm('Excluir este registro de vacina?')) return;
-  try {
-    const r = await api('/api/vacinas/' + id, { method: 'DELETE' });
-    aviso(r.message);
-    carregarVacinas();
-  } catch (e) { aviso(e.message, true); }
-};
-
-$('form-vacina').addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  try {
-    const r = await api('/api/vacinas', {
-      method: 'POST',
-      body: {
-        ave_id: $('vacina-ave').value,
-        nome_vacina: $('vacina-nome').value.trim(),
-        data_aplicacao: $('vacina-data').value,
-        proxima_dose: $('vacina-proxima').value,
-        observacoes: $('vacina-obs').value.trim()
-      }
-    });
-    aviso(r.message);
-    $('form-vacina').reset();
-    carregarVacinas();
-  } catch (e) { aviso(e.message, true); }
-});
 
 // ==================== NASCIMENTOS ====================
 let nascimentos = [];
@@ -619,15 +574,6 @@ async function carregarPainel() {
   $('painel-especies').innerHTML = barras(
     d.especies.map(e => ({ rotulo: e.especie, valor: e.total, texto: String(e.total), detalhe: `${e.machos}♂ ${e.femeas}♀` })),
     'Nenhuma ave no plantel');
-
-  $('painel-vacinas').innerHTML = d.vacinas.length ? `<ul class="lista-vacinas">${d.vacinas.map(x => {
-    const atrasada = x.proxima_dose < d.hoje;
-    return `<li class="${atrasada ? 'atrasada' : ''}">
-      <span>${atrasada ? '<span class="situacao cancelada">! Atrasada</span>' : '<span class="situacao espera">◷ Em breve</span>'}</span>
-      <span><strong>${escapar(x.ave_nome)}</strong> <small>${escapar(x.especie)}</small><br>${escapar(x.nome_vacina)}</span>
-      <span class="data">${formatarData(x.proxima_dose)}</span>
-    </li>`;
-  }).join('')}</ul>` : '<p class="vazio">Nenhuma dose atrasada ou nos próximos 30 dias</p>';
 
   $('painel-meses').innerHTML = colunasMeses(d.vendas_por_mes, d.hoje);
   $('painel-formas').innerHTML = barras(
@@ -962,7 +908,7 @@ const linkNovaSenha = async (id) => {
 };
 
 const excluirUsuario = async (id) => {
-  if (!confirm('Excluir este usuário e TODAS as aves, vacinas e nascimentos dele? Não dá para desfazer.')) return;
+  if (!confirm('Excluir este usuário e TODOS os dados dele (aves, nascimentos, vendas e backups)? Não dá para desfazer.')) return;
   try {
     const r = await api('/api/usuarios/' + id, { method: 'DELETE' });
     aviso(r.message);
@@ -1152,13 +1098,13 @@ $('form-redefinir').addEventListener('submit', async (ev) => {
 
 // ==================== INÍCIO ====================
 function atualizarTudo() {
-  return Promise.all([carregarEspecies(), carregarAves(), carregarTodasAves(), carregarResumo(), carregarVacinas(), carregarNascimentos(),
+  return Promise.all([carregarEspecies(), carregarAves(), carregarTodasAves(), carregarResumo(), carregarNascimentos(),
                       carregarPainel(), carregarVendas(), carregarPix()])
     .catch(e => aviso(e.message, true));
 }
 
 // Botões das tabelas: um só controlador, sem JavaScript dentro do HTML
-const ACOES = { editarAve, verFamilia, cadastrarFilhote, excluirAve, excluirEspecie, restaurarEspecie, excluirVacina, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
+const ACOES = { editarAve, verFamilia, cadastrarFilhote, excluirAve, excluirEspecie, restaurarEspecie, excluirNascimento, venderAve, marcarPagamento, cancelarVenda, excluirVenda, abrirPix, linkNovaSenha, excluirUsuario };
 document.addEventListener('click', (ev) => {
   const botao = ev.target.closest('[data-acao]');
   if (!botao || !ACOES[botao.dataset.acao]) return;
