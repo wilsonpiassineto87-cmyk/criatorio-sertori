@@ -505,21 +505,6 @@ td.botoes .btn { margin-left: 4px; }
   .coluna-valor { font-size: .62rem; }
 }
 
-/* Vacinas no painel */
-.lista-vacinas { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.lista-vacinas li {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
-  align-items: center;
-  padding: 9px 12px;
-  border-radius: 12px;
-  background: var(--ceu-claro);
-  font-size: .9rem;
-}
-.lista-vacinas li.atrasada { background: var(--perigo-claro); }
-.lista-vacinas small, .lista-vacinas .data { color: var(--suave); }
-
 /* Situação: ícone + texto, nunca só a cor */
 .situacao {
   display: inline-flex;

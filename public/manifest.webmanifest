@@ -1,7 +1,7 @@
 {
   "name": "Criadouro Sertori",
   "short_name": "Sertori",
-  "description": "Cadastro de aves, vacinas, nascimentos e vendas.",
+  "description": "Cadastro de aves, nascimentos e vendas.",
   "lang": "pt-BR",
   "start_url": "/",
   "display": "standalone",
