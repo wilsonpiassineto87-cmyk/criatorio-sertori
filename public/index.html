@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Criadouro Sertori</title>
   <meta name="theme-color" content="#1f4d3a">
-  <meta name="description" content="Criadouro Sertori: cadastro de aves, vacinas, nascimentos e vendas.">
+  <meta name="description" content="Criadouro Sertori: cadastro de aves, nascimentos e vendas.">
   <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icone-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -109,7 +109,6 @@
   <nav class="abas" id="menu" hidden>
     <button class="aba ativa" data-aba="painel">Painel</button>
     <button class="aba" data-aba="aves">Aves</button>
-    <button class="aba" data-aba="vacinas">Vacinas</button>
     <button class="aba" data-aba="nascimentos">Nascimentos</button>
     <button class="aba" data-aba="vendas">Vendas</button>
     <button class="aba" data-aba="dados">Backup</button>
@@ -128,13 +127,9 @@
       <div class="kpis" id="painel-kpis"></div>
 
       <div class="grade-painel">
-        <div class="cartao">
+        <div class="cartao largo">
           <h2>Plantel por espécie</h2>
           <div id="painel-especies"></div>
-        </div>
-        <div class="cartao">
-          <h2>Vacinas: atrasadas e próximos 30 dias</h2>
-          <div id="painel-vacinas"></div>
         </div>
         <div class="cartao largo">
           <h2>Faturamento por mês</h2>
@@ -251,45 +246,6 @@
           <button type="submit" class="btn">Adicionar espécie</button>
         </form>
         <div id="especies-excluidas"></div>
-      </div>
-    </section>
-
-    <!-- ==================== VACINAS ==================== -->
-    <section id="vacinas" class="painel">
-      <div class="cartao">
-        <h2>Registrar vacina / medicamento</h2>
-        <form id="form-vacina">
-          <div class="grade">
-            <label>Ave *
-              <select id="vacina-ave" required></select>
-            </label>
-            <label>Vacina / medicamento *
-              <input type="text" id="vacina-nome" required>
-            </label>
-            <label>Data de aplicação *
-              <input type="date" id="vacina-data" required>
-            </label>
-            <label>Próxima dose
-              <input type="date" id="vacina-proxima">
-            </label>
-            <label class="largo">Observações
-              <input type="text" id="vacina-obs">
-            </label>
-          </div>
-          <div class="acoes"><button type="submit" class="btn primario">Registrar</button></div>
-        </form>
-      </div>
-
-      <div class="cartao">
-        <h2>Histórico</h2>
-        <div class="tabela-rolagem">
-          <table>
-            <thead>
-              <tr><th>Ave</th><th>Espécie</th><th>Vacina</th><th>Aplicação</th><th>Próxima dose</th><th>Observações</th><th></th></tr>
-            </thead>
-            <tbody id="tabela-vacinas"></tbody>
-          </table>
-        </div>
       </div>
     </section>
 

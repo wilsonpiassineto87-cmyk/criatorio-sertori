@@ -451,30 +451,6 @@ async function rotear(request, env, params) {
     return json({ total: t.total, machos: t.machos || 0, femeas: t.femeas || 0, especies: especies.results, cores: cores.results });
   }
 
-  // ==================== VACINAS ====================
-  if (recurso === 'vacinas') {
-    if (metodo === 'GET') {
-      const { results } = await db.prepare(`SELECT v.*, a.nome as ave_nome, a.especie, a.cor
-                                            FROM vacinas v LEFT JOIN aves a ON v.ave_id = a.id AND a.usuario_id = v.usuario_id
-                                            WHERE v.usuario_id = ?
-                                            ORDER BY v.data_aplicacao DESC`).bind(uid).all();
-      return json(results);
-    }
-    if (metodo === 'POST') {
-      if (vazio(corpo.ave_id) || vazio(corpo.nome_vacina) || vazio(corpo.data_aplicacao)) {
-        return erro('Preencha ave, vacina e data de aplicação', 400);
-      }
-      if (!(await aveDoUsuario(db, corpo.ave_id, uid))) return erro('Ave não encontrada', 404);
-      const r = await db.prepare('INSERT INTO vacinas (usuario_id, ave_id, nome_vacina, data_aplicacao, proxima_dose, observacoes) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(uid, Number(corpo.ave_id), corpo.nome_vacina, corpo.data_aplicacao, corpo.proxima_dose || '', corpo.observacoes || '').run();
-      return json({ id: r.meta.last_row_id, message: 'Vacina registrada!' });
-    }
-    if (metodo === 'DELETE') {
-      const r = await db.prepare('DELETE FROM vacinas WHERE id = ? AND usuario_id = ?').bind(id, uid).run();
-      return r.meta.changes ? json({ message: 'Vacina excluída!' }) : erro('Vacina não encontrada', 404);
-    }
-  }
-
   // ==================== NASCIMENTOS ====================
   if (recurso === 'nascimentos') {
     if (metodo === 'GET') {
@@ -645,7 +621,7 @@ async function rotear(request, env, params) {
   // ==================== PAINEL ====================
   if (recurso === 'painel' && metodo === 'GET') {
     const valida = "status_pagamento != 'cancelada'";
-    const [plantel, especies, filhotes, vacinasProximas, vendasResumo, vendasMes, formas, especiesVendidas, ultimasVendas] = await db.batch([
+    const [plantel, especies, filhotes, vendasResumo, vendasMes, formas, especiesVendidas, ultimasVendas] = await db.batch([
       db.prepare(`SELECT COUNT(*) as total,
                          SUM(CASE WHEN sexo = 'Macho' THEN 1 ELSE 0 END) as machos,
                          SUM(CASE WHEN sexo = 'Fêmea' THEN 1 ELSE 0 END) as femeas,
@@ -658,10 +634,6 @@ async function rotear(request, env, params) {
                   FROM aves WHERE usuario_id = ? AND status = 'plantel' GROUP BY especie ORDER BY total DESC`).bind(uid),
       db.prepare(`SELECT COALESCE(SUM(quantidade), 0) as filhotes, COUNT(*) as ninhadas
                   FROM nascimentos WHERE usuario_id = ? AND strftime('%Y', data_nascimento) = strftime('%Y', ${HOJE_BR})`).bind(uid),
-      db.prepare(`SELECT v.id, v.nome_vacina, v.proxima_dose, a.nome as ave_nome, a.especie
-                  FROM vacinas v JOIN aves a ON a.id = v.ave_id AND a.usuario_id = v.usuario_id AND a.status = 'plantel'
-                  WHERE v.usuario_id = ? AND v.proxima_dose != '' AND v.proxima_dose <= date(${HOJE_BR}, '+30 days')
-                  ORDER BY v.proxima_dose LIMIT 8`).bind(uid),
       db.prepare(`SELECT
                     COUNT(*) as total_vendas,
                     COALESCE(SUM(CASE WHEN status_pagamento = 'pago' THEN valor END), 0) as recebido,
@@ -688,7 +660,6 @@ async function rotear(request, env, params) {
       plantel: plantel.results[0],
       especies: especies.results,
       nascimentos: filhotes.results[0],
-      vacinas: vacinasProximas.results,
       vendas: vendasResumo.results[0],
       vendas_por_mes: vendasMes.results,
       formas_pagamento: formas.results,
