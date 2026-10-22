@@ -537,6 +537,17 @@ td.botoes .btn { margin-left: 4px; }
   border-radius: 16px;
 }
 .pix-qr svg { display: block; width: 100%; height: auto; }
+.pix-destino {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--ok-claro);
+  color: var(--ok);
+  font-size: .88rem;
+  overflow-wrap: anywhere;
+}
+.pix-avulso { margin-top: 18px; padding-top: 14px; border-top: 1.5px solid var(--borda); align-items: flex-end; }
+.pix-avulso label { flex: 1 1 200px; }
 textarea {
   font-family: ui-monospace, monospace;
   font-size: .78rem;
