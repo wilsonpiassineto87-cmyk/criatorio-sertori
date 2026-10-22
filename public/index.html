@@ -381,6 +381,12 @@
           </div>
           <div class="acoes"><button type="submit" class="btn primario">Salvar Pix</button></div>
         </form>
+        <form id="form-qr-avulso" class="filtros pix-avulso">
+          <label>Valor do QR Code (opcional)
+            <input type="number" id="pix-avulso-valor" min="0.01" step="0.01" placeholder="Em branco: o comprador digita">
+          </label>
+          <button type="submit" class="btn">Gerar QR Code do meu Pix</button>
+        </form>
       </div>
     </section>
 
@@ -508,6 +514,7 @@
     <div class="cartao caixa-segredo" role="dialog" aria-modal="true" aria-labelledby="pix-titulo">
       <h2 id="pix-titulo">Pagamento via Pix</h2>
       <p class="dica" id="pix-descricao"></p>
+      <p class="pix-destino" id="pix-destino"></p>
       <div class="pix-valor" id="pix-valor"></div>
       <div class="pix-qr" id="pix-qr"></div>
       <label>Pix copia e cola

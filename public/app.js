@@ -782,27 +782,62 @@ $('form-pix').addEventListener('submit', async (ev) => {
 
 let vendaPix = null;
 
-const abrirPix = (id) => {
-  const v = vendas.find(x => x.id === id);
-  if (!v) return;
+const TIPOS_CHAVE = { cpf: 'CPF', cnpj: 'CNPJ', celular: 'Celular', email: 'E-mail', aleatoria: 'Chave aleatória' };
+
+// Garante que os dados do Pix salvos no banco estão carregados. Sem chave, leva o usuário ao "Meu Pix".
+async function pixCadastrado() {
   if (!configPix.chave) {
-    aviso('Cadastre sua chave Pix em "Meu Pix" para gerar o QR Code', true);
-    $('form-pix').scrollIntoView({ behavior: 'smooth' });
-    return $('pix-tipo').focus();
+    try { await carregarPix(); } catch (e) { aviso(e.message, true); return false; }
   }
-  vendaPix = v;
-  const codigo = Pix.gerarPix({ ...configPix, valor: v.valor, txid: 'VENDA' + v.id });
+  if (configPix.chave) return true;
+  aviso('Cadastre sua chave Pix em "Meu Pix" para gerar o QR Code', true);
+  abrirPainel('vendas');
+  $('form-pix').scrollIntoView({ behavior: 'smooth' });
+  $('pix-tipo').focus({ preventScroll: true });
+  return false;
+}
+
+// Monta a janela com o QR Code e o "copia e cola", sempre com a chave cadastrada em "Meu Pix"
+function mostrarQrPix({ valor, txid, descricao, venda }) {
+  vendaPix = venda || null;
+  const codigo = Pix.gerarPix({ ...configPix, valor, txid });
   const qr = qrcode(0, 'M');
   qr.addData(codigo);
   qr.make();
   $('pix-qr').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4, alt: 'QR Code do Pix', scalable: true });
-  $('pix-valor').textContent = dinheiro(v.valor);
-  $('pix-descricao').textContent = `${v.ave_nome} (${v.ave_especie} ${v.ave_cor || ''})${v.comprador_nome ? ' para ' + v.comprador_nome : ''}. ` +
-    `Recebedor: ${configPix.nome}. Peça para o comprador ler o QR Code ou colar o código no app do banco.`;
+  $('pix-valor').textContent = valor ? dinheiro(valor) : 'Valor livre';
+  $('pix-descricao').textContent = descricao;
+  $('pix-destino').textContent = `O dinheiro vai para: ${configPix.nome} · ${TIPOS_CHAVE[configPix.tipo] || 'Chave'} ` +
+    `${Pix.normalizarChave(configPix.chave, configPix.tipo)} · ${configPix.cidade}`;
   $('pix-codigo').value = codigo;
   $('btn-copiar-pix').textContent = 'Copiar código';
+  // Sem venda (QR avulso), não há pagamento para confirmar nem comprador para o WhatsApp
+  $('btn-pix-pago').hidden = !venda;
+  $('btn-whats-pix').hidden = !venda;
   $('caixa-pix').hidden = false;
+}
+
+const abrirPix = async (id) => {
+  const v = vendas.find(x => x.id === id);
+  if (!v || !(await pixCadastrado())) return;
+  mostrarQrPix({
+    valor: v.valor,
+    txid: 'VENDA' + v.id,
+    venda: v,
+    descricao: `${v.ave_nome} (${v.ave_especie} ${v.ave_cor || ''})${v.comprador_nome ? ' para ' + v.comprador_nome : ''}. ` +
+      'Peça para o comprador ler o QR Code ou colar o código no app do banco.'
+  });
 };
+
+$('form-qr-avulso').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if (!(await pixCadastrado())) return;
+  const valor = Number($('pix-avulso-valor').value) || 0;
+  mostrarQrPix({
+    valor,
+    descricao: valor ? 'QR Code do seu Pix com o valor informado.' : 'QR Code do seu Pix. O comprador digita o valor no app do banco.'
+  });
+});
 
 $('btn-copiar-pix').addEventListener('click', async () => {
   try {
